@@ -46,13 +46,14 @@ jobs:
         run: |
           echo "${{ secrets.ENV_FILE }}" > website/.env
 
-      - name: Copy docker-compose and env to VM
+      - name: Copy files to VM
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          source: "website/docker-compose.yml,website/.env"
+          # Vi kopierer ALT indhold fra website-mappen over
+          source: "website/*"
           target: ${{ secrets.VM_PROJECT_PATH }}
 
       - name: Deploy on VM
@@ -62,12 +63,12 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            cd ${{ secrets.VM_PROJECT_PATH }}
-            # Hvis filerne blev lagt ind i en 'website' undermappe, så hop derind
-            if [ -d "website" ]; then cd website; fi
+            # Vi går ind i projektmappen og derefter ind i website-undermappen
+            cd ${{ secrets.VM_PROJECT_PATH }}/website
             
-            echo "Nuværende placering:" && pwd
-            echo "Filer i mappen:" && ls -la
+            echo "Vi er her:" && pwd
+            echo "Filer fundet:" && ls -la
             
+            # Nu burde docker-compose.yml være her
             docker compose pull
             docker compose up -d --remove-orphans
