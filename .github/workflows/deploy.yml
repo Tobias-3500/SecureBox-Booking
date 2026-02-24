@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      REGISTRY: ${{ secrets.REGISTRY }}
-      IMAGE_BACKEND: ${{ secrets.REGISTRY }}/salon-backend:latest
-      IMAGE_FRONTEND: ${{ secrets.REGISTRY }}/salon-frontend:latest
+      REGISTRY: ghcr.io
+      # Vi fjerner secrets-referencen her og bruger dit brugernavn direkte i små bogstaver
+      IMAGE_BACKEND: ghcr.io/tobias-3500/salon-backend:latest
+      IMAGE_FRONTEND: ghcr.io/tobias-3500/salon-frontend:latest
 
     steps:
       - name: Checkout repository
@@ -42,6 +43,10 @@ jobs:
           push: true
           tags: ${{ env.IMAGE_FRONTEND }}
 
+      - name: Create .env file from secret
+        run: |
+          echo "${{ secrets.ENV_FILE }}" > website/.env
+
       - name: Copy docker-compose and env to VM
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -61,4 +66,3 @@ jobs:
             cd ${{ secrets.VM_PROJECT_PATH }}/website
             docker compose pull
             docker compose up -d --remove-orphans
-
