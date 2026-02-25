@@ -1,4 +1,15 @@
 services:
+  nginx:
+    image: nginx:alpine
+    container_name: salon_router
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - backend
+
   db:
     image: postgres:15-alpine
     container_name: salon_db
@@ -6,11 +17,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
+    # Vi fjerner ports herfra for at sikre databasen mod udefrakommende
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Retter stien så den peger ind i website mappen
       - ./website/backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -20,7 +29,6 @@ services:
       start_period: 10s
 
   backend:
-    # Vi bruger det billede, som din GitHub Action lige har bygget
     image: ghcr.io/tobias-3500/salon-backend:latest
     container_name: salon_backend
     environment:
@@ -34,25 +42,25 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
-    ports:
-      - "3001:3001"
+    # Vi fjerner 'ports' og bruger 'expose', så kun Nginx kan se den
+    expose:
+      - "3001"
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:${BACKEND_PORT}/api/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
-    # Vi fjerner volumes her, da vi bruger det færdige billede på serveren
 
   frontend:
-    # Vi bruger det færdige frontend-billede
     image: ghcr.io/tobias-3500/salon-frontend:latest
     container_name: salon_frontend
-    ports:
-      - "80:80"
+    # Vi fjerner 'ports' og lader Nginx styre adgangen
+    expose:
+      - "80"
     depends_on:
       - backend
 
