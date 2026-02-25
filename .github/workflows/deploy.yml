@@ -44,7 +44,8 @@ jobs:
 
       - name: Create .env file from secret
         run: |
-          echo "${{ secrets.ENV_FILE }}" > website/.env
+          # Vi opretter .env filen præcis hvor docker-compose forventer den (i roden)
+          echo "${{ secrets.ENV_FILE }}" > .env
 
       - name: Copy files to VM
         uses: appleboy/scp-action@v0.1.7
@@ -52,8 +53,8 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          # Vi kopierer ALT indhold fra website-mappen over
-          source: "website/*"
+          # Vi kopierer både compose-filen og website-mappen over
+          source: "docker-compose.yml,.env,website/"
           target: ${{ secrets.VM_PROJECT_PATH }}
 
       - name: Deploy on VM
@@ -63,12 +64,12 @@ jobs:
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
-            # Vi går ind i projektmappen og derefter ind i website-undermappen
-            cd ${{ secrets.VM_PROJECT_PATH }}/website
+            # Vi går til roden af projektet på serveren
+            cd ${{ secrets.VM_PROJECT_PATH }}
             
-            echo "Vi er her:" && pwd
-            echo "Filer fundet:" && ls -la
+            echo "Tjekker filer i roden:"
+            ls -la
             
-            # Nu burde docker-compose.yml være her
+            # Nu kører vi docker fra roden, hvor docker-compose.yml ligger
             docker compose pull
             docker compose up -d --remove-orphans
