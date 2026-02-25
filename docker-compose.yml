@@ -10,7 +10,8 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Retter stien så den peger ind i website mappen
+      - ./website/backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -19,9 +20,8 @@ services:
       start_period: 10s
 
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    # Vi bruger det billede, som din GitHub Action lige har bygget
+    image: ghcr.io/tobias-3500/salon-backend:latest
     container_name: salon_backend
     environment:
       NODE_ENV: ${NODE_ENV}
@@ -45,14 +45,11 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
+    # Vi fjerner volumes her, da vi bruger det færdige billede på serveren
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    # Vi bruger det færdige frontend-billede
+    image: ghcr.io/tobias-3500/salon-frontend:latest
     container_name: salon_frontend
     ports:
       - "3000:80"
