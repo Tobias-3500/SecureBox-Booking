@@ -1,0 +1,12 @@
+# Local development override: use HTTP-only nginx (no SSL certs required).
+# Docker Compose merges this automatically when present.
+# For production, use: docker-compose -f docker-compose.yml up (no override).
+services:
+  nginx:
+    volumes:
+      - ./nginx.local.conf:/etc/nginx/conf.d/default.conf:ro
+
+  # Expose frontend on host so you can use http://localhost:3000 if nginx fails
+  frontend:
+    ports:
+      - "3000:80"

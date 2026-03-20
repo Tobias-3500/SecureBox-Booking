@@ -59,3 +59,95 @@
   opacity: 0.9;
 }
 
+.admin-widget {
+  margin-bottom: 2rem;
+  padding: 1.25rem;
+  background: #f9fafb;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.admin-widget h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  color: #2d5016;
+  font-size: 1.1rem;
+}
+
+.admin-hint {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin-bottom: 1rem;
+}
+
+.system-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+}
+
+.system-status.ok .status-dot { background: #22c55e; }
+.system-status.error .status-dot { background: #ef4444; }
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.backup-log-section {
+  margin-top: 1rem;
+}
+
+.backup-log {
+  margin-top: 0.75rem;
+  padding: 1rem;
+  background: #1f2937;
+  color: #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.admin-button-secondary {
+  background: #6b7280;
+}
+
+.admin-button-danger {
+  background: #b91c1c;
+}
+
+.admin-button-cancel {
+  margin-top: 0;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  background: transparent;
+  color: #b91c1c;
+  border: 1px solid #b91c1c;
+}
+
+.admin-button-cancel:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+.admin-button-cancel:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.status-badge {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+.admin-success {
+  color: #15803d;
+  margin-top: 0.5rem;
+}
+

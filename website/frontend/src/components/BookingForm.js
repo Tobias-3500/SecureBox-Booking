@@ -49,7 +49,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!consentGiven) {
-      setError('You must agree to the Terms & Conditions and Privacy Policy before booking.');
+      setError('Du skal acceptere vilkår og betingelser samt privatlivspolitik for at booke.');
       return;
     }
     setLoading(true);
@@ -68,7 +68,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
         }, 3000);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to book appointment. Please try again.');
+      setError(err.response?.data?.error || 'Kunne ikke booke. Prøv igen.');
     } finally {
       setLoading(false);
     }
@@ -87,10 +87,10 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
     return (
       <div className="booking-success">
         <div className="success-icon">✓</div>
-        <h2>Appointment Booked Successfully!</h2>
-        <p>We've sent a confirmation to your email.</p>
+        <h2>Booking gennemført!</h2>
+        <p>Vi har sendt en bekræftelse til din e-mail.</p>
         <p className="success-details">
-          {service.name} on {new Date(formData.appointment_date).toLocaleDateString()} at {formData.time_slot}
+          {service.name} den {new Date(formData.appointment_date).toLocaleDateString('da-DK')} kl. {formData.time_slot}
         </p>
       </div>
     );
@@ -99,19 +99,19 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
   return (
     <div className="booking-form-container">
       <button className="back-button" onClick={onBack}>
-        ← Back to Services
+        ← Tilbage til ydelser
       </button>
       
       <div className="booking-card">
         <div className="booking-header">
-          <h2>Book Your Appointment</h2>
+          <h2>Book din tid</h2>
           <div className="selected-service-info">
             <h3>{service.name}</h3>
             <p>{service.description}</p>
             <div className="service-summary">
-              <span>Duration: {service.duration} min</span>
+              <span>Varighed: {service.duration} min</span>
               <span>
-                Price: {parseFloat(service.price).toFixed(2)} DKK
+                Pris: {parseFloat(service.price).toFixed(2)} DKK
               </span>
             </div>
           </div>
@@ -119,7 +119,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
 
         <form onSubmit={handleSubmit} className="booking-form">
           <div className="form-group">
-            <label htmlFor="name">Full Name *</label>
+            <label htmlFor="name">Fulde navn *</label>
             <input
               type="text"
               id="name"
@@ -127,12 +127,12 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
               value={formData.name}
               onChange={handleChange}
               required
-              placeholder="Enter your full name"
+              placeholder="Indtast dit fulde navn"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">Email *</label>
+            <label htmlFor="email">E-mail *</label>
             <input
               type="email"
               id="email"
@@ -140,12 +140,12 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
               value={formData.email}
               onChange={handleChange}
               required
-              placeholder="your.email@example.com"
+              placeholder="din.email@eksempel.dk"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="phone">Phone Number *</label>
+            <label htmlFor="phone">Telefonnummer *</label>
             <input
               type="tel"
               id="phone"
@@ -153,12 +153,12 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
               value={formData.phone}
               onChange={handleChange}
               required
-              placeholder="(555) 123-4567"
+              placeholder="12 34 56 78"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="appointment_date">Select Date *</label>
+            <label htmlFor="appointment_date">Vælg dato *</label>
             <input
               type="date"
               id="appointment_date"
@@ -173,7 +173,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
 
           {formData.appointment_date && (
             <div className="form-group">
-              <label htmlFor="time_slot">Select Time *</label>
+              <label htmlFor="time_slot">Vælg tid *</label>
               <div className="time-slots">
                 {getAvailableSlots().map(slot => (
                   <button
@@ -189,7 +189,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
                   </button>
                 ))}
                 {getAvailableSlots().length === 0 && (
-                  <p className="no-slots">No available slots for this date. Please select another date.</p>
+                  <p className="no-slots">Ingen ledige tider denne dag. Vælg en anden dato.</p>
                 )}
               </div>
             </div>
@@ -209,13 +209,13 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
                 required
               />
               <span>
-                I agree to the{' '}
+                Jeg accepterer{' '}
                 <a href="/terms" target="_blank" rel="noopener noreferrer">
-                  Terms &amp; Conditions
+                  vilkår og betingelser
                 </a>{' '}
-                and{' '}
+                og{' '}
                 <a href="/privacy" target="_blank" rel="noopener noreferrer">
-                  Privacy Policy
+                  privatlivspolitik
                 </a>
                 .
               </span>
@@ -229,7 +229,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
             className="submit-button"
             disabled={loading || !formData.time_slot}
           >
-            {loading ? 'Booking...' : 'Confirm Booking'}
+            {loading ? 'Booker...' : 'Bekræft booking'}
           </button>
         </form>
       </div>

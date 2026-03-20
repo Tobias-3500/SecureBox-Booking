@@ -22,15 +22,37 @@ function App() {
   });
   const [currentUser, setCurrentUser] = useState(null);
   const [authError, setAuthError] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useEffect(() => {
     fetchServices();
   }, []);
 
+  // Restore session from JWT cookie (for route guard and /admin)
+  useEffect(() => {
+    fetch(`${API_URL}/api/me`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setCurrentUser({ id: data.id, name: data.name, email: data.email, isAdmin: !!data.isAdmin });
+        setAuthChecked(true);
+      })
+      .catch(() => setAuthChecked(true));
+  }, [API_URL]);
+
+  // Route guard: /admin only for authenticated admins; otherwise redirect to home
+  useEffect(() => {
+    if (!authChecked) return;
+    const isAdminPath = typeof window !== 'undefined' && window.location.pathname === '/admin';
+    if (isAdminPath && (!currentUser || !currentUser.isAdmin)) {
+      window.location.replace('/');
+    }
+  }, [authChecked, currentUser]);
+
   const fetchServices = async () => {
     try {
+      setError(null);
       const response = await fetch(`${API_URL}/api/services`);
-      if (!response.ok) throw new Error('Failed to fetch services');
+      if (!response.ok) throw new Error('Kunne ikke hente ydelser');
       const data = await response.json();
       setServices(data);
       setLoading(false);
@@ -50,20 +72,9 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleBookNowClick = () => {
-    // Scroll to services section so user can select a service
-    const servicesSection = document.querySelector('.services-section');
-    if (servicesSection) {
-      servicesSection.scrollIntoView({ behavior: 'smooth' });
-    } else {
-      // If services section doesn't exist yet, wait a bit and try again
-      setTimeout(() => {
-        const section = document.querySelector('.services-section');
-        if (section) {
-          section.scrollIntoView({ behavior: 'smooth' });
-        }
-      }, 100);
-    }
+  const handleOmOsClick = () => {
+    const section = document.querySelector('.om-os-section');
+    if (section) section.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleServicesClick = () => {
@@ -76,7 +87,7 @@ function App() {
 
   const handleLogout = () => {
     setCurrentUser(null);
-    // Optional: could also clear any saved tokens here in the future
+    fetch(`${API_URL}/api/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
   };
 
   const openAuth = (mode = 'login') => {
@@ -131,7 +142,7 @@ function App() {
 
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Authentication failed');
+        throw new Error(data.error || 'Login mislykkedes');
       }
 
       setCurrentUser({
@@ -152,7 +163,7 @@ function App() {
     return (
       <div className="loading-container">
         <div className="spinner"></div>
-        <p>Loading services...</p>
+        <p>Henter ydelser...</p>
       </div>
     );
   }
@@ -160,8 +171,8 @@ function App() {
   if (error) {
     return (
       <div className="error-container">
-        <p>Error: {error}</p>
-        <button onClick={fetchServices}>Retry</button>
+        <p>Fejl: {error}</p>
+        <button onClick={fetchServices}>Prøv igen</button>
       </div>
     );
   }
@@ -169,7 +180,7 @@ function App() {
   return (
     <div className="App">
       <Header
-        onBookNow={handleBookNowClick}
+        onOmOsClick={handleOmOsClick}
         onServicesClick={handleServicesClick}
         onAuthClick={() => openAuth('login')}
         onLogout={handleLogout}
@@ -177,16 +188,20 @@ function App() {
       />
       <main className="main-content">
         {isAdminRoute ? (
-          <AdminDashboard apiUrl={API_URL} currentUser={currentUser} onRequireAuth={() => openAuth('login')} />
+          authChecked && currentUser && currentUser.isAdmin ? (
+            <AdminDashboard apiUrl={API_URL} currentUser={currentUser} onRequireAuth={() => openAuth('login')} />
+          ) : (
+            <div className="loading-container"><p>Omdirigerer...</p></div>
+          )
         ) : (
           <>
             <section className="hero-section">
               <div className="hero-content">
                 <h1 className="hero-title">
-                  Welcome to <span className="highlight">Serenity Salon</span>
+                  Velkommen til <span className="highlight">Serenity Salon</span>
                 </h1>
                 <p className="hero-subtitle">
-                  Your perfect look awaits. Book an appointment with our expert stylists.
+                  Dit perfekte look venter. Book en tid hos vores eksperter.
                 </p>
               </div>
             </section>
@@ -200,7 +215,7 @@ function App() {
               />
             ) : (
               <section className="services-section" id="services">
-                <h2 className="section-title">Our Services</h2>
+                <h2 className="section-title">Vores ydelser</h2>
                 <div className="services-grid">
                   {services.map((service) => (
                     <ServiceCard
@@ -212,11 +227,21 @@ function App() {
                 </div>
               </section>
             )}
+
+            <section className="om-os-section" id="om-os">
+              <h2 className="section-title">Om os</h2>
+              <p className="om-os-label">Tekst eksempel</p>
+              <div className="om-os-content">
+                <p>
+                  Serenity Salon er din lokale frisør med fokus på kvalitet og afslapning. Vi tilbyder klipning, farvning og styling for alle. Kom forbi eller book en tid online.
+                </p>
+              </div>
+            </section>
           </>
         )}
       </main>
       <footer className="footer">
-        <p>&copy; 2024 Serenity Salon. All rights reserved.</p>
+        <p>&copy; 2024 Serenity Salon. Alle rettigheder forbeholdes.</p>
       </footer>
 
       {showAuth && (
@@ -228,24 +253,24 @@ function App() {
                 className={authMode === 'login' ? 'active' : ''}
                 onClick={() => setAuthMode('login')}
               >
-                Login
+                Log ind
               </button>
               <button
                 type="button"
                 className={authMode === 'signup' ? 'active' : ''}
                 onClick={() => setAuthMode('signup')}
               >
-                Sign up
+                Opret konto
               </button>
             </div>
 
-            <h2>{authMode === 'login' ? 'Login' : 'Create account'}</h2>
+            <h2>{authMode === 'login' ? 'Log ind' : 'Opret konto'}</h2>
 
             <form className="auth-form" onSubmit={handleAuthSubmit}>
               {authMode === 'signup' && (
                 <>
                   <label>
-                    Name
+                    Navn
                     <input
                       type="text"
                       name="name"
@@ -255,7 +280,7 @@ function App() {
                     />
                   </label>
                   <label>
-                    Phone
+                    Telefon
                     <input
                       type="tel"
                       name="phone"
@@ -268,7 +293,7 @@ function App() {
               )}
 
               <label>
-                Email
+                E-mail
                 <input
                   type="email"
                   name="email"
@@ -279,7 +304,7 @@ function App() {
               </label>
 
               <label>
-                Password
+                Adgangskode
                 <input
                   type="password"
                   name="password"
@@ -293,10 +318,10 @@ function App() {
 
               <div className="auth-actions">
                 <button type="button" className="auth-secondary" onClick={closeAuth}>
-                  Cancel
+                  Annuller
                 </button>
                 <button type="submit" className="auth-primary">
-                  {authMode === 'login' ? 'Login' : 'Sign up'}
+                  {authMode === 'login' ? 'Log ind' : 'Opret konto'}
                 </button>
               </div>
             </form>

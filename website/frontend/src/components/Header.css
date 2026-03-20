@@ -88,6 +88,17 @@
   box-shadow: 0 12px 26px rgba(107, 159, 120, 0.45);
 }
 
+.nav-link-style {
+  background: transparent !important;
+  color: #5a7c65 !important;
+  box-shadow: none !important;
+}
+
+.nav-link-style:hover {
+  color: #6b9f78 !important;
+  transform: none;
+}
+
 @keyframes slideDown {
   from {
     transform: translateY(-100%);

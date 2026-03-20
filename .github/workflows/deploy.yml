@@ -52,8 +52,9 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          # TILFØJET: nginx.conf er nu med i listen over filer
-          source: "docker-compose.yml,.env,nginx.conf,website/"
+          # Use docker-compose.prod.yml (image-only); do not overwrite VM's docker-compose.yml.
+          # certbot/, renew_ssl.sh, backup script and VPN config on VM are left untouched.
+          source: "docker-compose.prod.yml,.env,nginx.conf,website/"
           target: ${{ secrets.VM_PROJECT_PATH }}
 
       - name: Deploy on VM
@@ -64,15 +65,6 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             cd ${{ secrets.VM_PROJECT_PATH }}
-            
-            # FIX: Slet nginx.conf hvis det er en mappe (Docker fejl-oprettelse)
-            if [ -d "nginx.conf" ]; then
-              echo "Rydder op i forkert nginx.conf mappe..."
-              rm -rf nginx.conf
-            fi
-
-            echo "Tjekker filer i roden:"
-            ls -la
-            
-            docker compose pull
-            docker compose up -d --remove-orphans
+            if [ -d "nginx.conf" ]; then rm -rf nginx.conf; fi
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
