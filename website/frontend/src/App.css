@@ -106,6 +106,34 @@
   margin: 0 0 1rem;
 }
 
+/* /admin gate (visible to all; only admin account passes API checks) */
+.admin-gate {
+  text-align: center;
+  padding: 3rem 1.5rem;
+  max-width: 520px;
+  margin: 0 auto;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.admin-gate .section-title {
+  margin-bottom: 1rem;
+}
+
+.admin-gate p {
+  color: #5a7c65;
+  line-height: 1.65;
+  margin: 0 0 1.5rem;
+}
+
+.admin-gate .nav-button {
+  margin-top: 0.25rem;
+}
+
+a.admin-gate-home {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
 /* Simple auth modal */
 .auth-modal-backdrop {
   position: fixed;

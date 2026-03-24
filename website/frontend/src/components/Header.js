@@ -32,9 +32,7 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
         <nav className="nav">
           <a href="#services" className="nav-link" onClick={handleServicesClick}>Ydelser</a>
           <a href="#om-os" className="nav-link" onClick={handleOmOsClick}>Om os</a>
-          {currentUser && currentUser.isAdmin && (
-            <a href="/admin" className="nav-link">Admin</a>
-          )}
+          <a href="/admin" className="nav-link">Admin</a>
           {currentUser ? (
             <>
               <span className="nav-user">Hej, {currentUser.name}</span>

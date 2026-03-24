@@ -39,15 +39,6 @@ function App() {
       .catch(() => setAuthChecked(true));
   }, [API_URL]);
 
-  // Route guard: /admin only for authenticated admins; otherwise redirect to home
-  useEffect(() => {
-    if (!authChecked) return;
-    const isAdminPath = typeof window !== 'undefined' && window.location.pathname === '/admin';
-    if (isAdminPath && (!currentUser || !currentUser.isAdmin)) {
-      window.location.replace('/');
-    }
-  }, [authChecked, currentUser]);
-
   const fetchServices = async () => {
     try {
       setError(null);
@@ -188,10 +179,33 @@ function App() {
       />
       <main className="main-content">
         {isAdminRoute ? (
-          authChecked && currentUser && currentUser.isAdmin ? (
+          !authChecked ? (
+            <div className="loading-container">
+              <div className="spinner" />
+              <p>Henter session...</p>
+            </div>
+          ) : currentUser && currentUser.isAdmin ? (
             <AdminDashboard apiUrl={API_URL} currentUser={currentUser} onRequireAuth={() => openAuth('login')} />
+          ) : currentUser ? (
+            <div className="admin-gate">
+              <h2 className="section-title">Ingen adgang</h2>
+              <p>
+                Denne side er kun for salonens administrator. Du er logget ind som en almindelig konto.
+              </p>
+              <a href="/" className="nav-link admin-gate-home">
+                Tilbage til forsiden
+              </a>
+            </div>
           ) : (
-            <div className="loading-container"><p>Omdirigerer...</p></div>
+            <div className="admin-gate">
+              <h2 className="section-title">Administration</h2>
+              <p>
+                Log ind med administrator-kontoen (den e-mail der er sat som admin på serveren) for at se bookinger og systemstatus.
+              </p>
+              <button type="button" className="nav-button" onClick={() => openAuth('login')}>
+                Log ind
+              </button>
+            </div>
           )
         ) : (
           <>
