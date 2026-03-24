@@ -1,4 +1,4 @@
-# Serenity Salon - Booking System
+# Nordisk Hår – booking
 
 A beautiful, modern booking appointment system for a small haircut salon with soothing colors and smooth animations.
 

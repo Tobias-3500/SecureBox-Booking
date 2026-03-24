@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert default services (Danish names, prices in DKK)
+-- Insert default services (Danish names, prices in DKK; all >= 100)
 INSERT INTO services (name, description, duration, price) VALUES
 ('Klipning', 'Professionel klipning med styling', 30, 250.00),
 ('Klipning og vask', 'Klipning med vask og styling', 45, 350.00),

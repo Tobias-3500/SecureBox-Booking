@@ -198,7 +198,7 @@ function App() {
             <section className="hero-section">
               <div className="hero-content">
                 <h1 className="hero-title">
-                  Velkommen til <span className="highlight">Serenity Salon</span>
+                  Velkommen til <span className="highlight">Nordisk Hår</span>
                 </h1>
                 <p className="hero-subtitle">
                   Dit perfekte look venter. Book en tid hos vores eksperter.
@@ -233,7 +233,7 @@ function App() {
               <p className="om-os-label">Tekst eksempel</p>
               <div className="om-os-content">
                 <p>
-                  Serenity Salon er din lokale frisør med fokus på kvalitet og afslapning. Vi tilbyder klipning, farvning og styling for alle. Kom forbi eller book en tid online.
+                  Nordisk Hår er din lokale frisør med fokus på kvalitet og afslapning. Vi tilbyder klipning, farvning og styling for alle. Kom forbi eller book en tid online.
                 </p>
               </div>
             </section>
@@ -241,7 +241,7 @@ function App() {
         )}
       </main>
       <footer className="footer">
-        <p>&copy; 2024 Serenity Salon. Alle rettigheder forbeholdes.</p>
+        <p>&copy; 2024 Nordisk Hår. Alle rettigheder forbeholdes.</p>
       </footer>
 
       {showAuth && (

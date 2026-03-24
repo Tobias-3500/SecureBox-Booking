@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import './BookingForm.css';
 
+function formatDkk(value) {
+  return new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(Number(value));
+}
+
 const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
   const [formData, setFormData] = useState({
     name: '',
@@ -34,7 +38,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
       const response = await axios.get(`${apiUrl}/api/availability/${date}`);
       setBookedSlots(response.data.bookedSlots || []);
     } catch (err) {
-      console.error('Error fetching availability:', err);
+      console.error('Kunne ikke hente ledige tider:', err);
     }
   };
 
@@ -87,7 +91,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
     return (
       <div className="booking-success">
         <div className="success-icon">✓</div>
-        <h2>Booking gennemført!</h2>
+        <h2>Tiden er booket!</h2>
         <p>Vi har sendt en bekræftelse til din e-mail.</p>
         <p className="success-details">
           {service.name} den {new Date(formData.appointment_date).toLocaleDateString('da-DK')} kl. {formData.time_slot}
@@ -111,7 +115,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
             <div className="service-summary">
               <span>Varighed: {service.duration} min</span>
               <span>
-                Pris: {parseFloat(service.price).toFixed(2)} DKK
+                Pris: {formatDkk(service.price)}
               </span>
             </div>
           </div>
@@ -229,7 +233,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
             className="submit-button"
             disabled={loading || !formData.time_slot}
           >
-            {loading ? 'Booker...' : 'Bekræft booking'}
+            {loading ? 'Booker …' : 'Bekræft booking'}
           </button>
         </form>
       </div>

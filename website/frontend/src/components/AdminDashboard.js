@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import './AdminDashboard.css';
 
+function statusLabelDa(status) {
+  if (status === 'confirmed') return 'Bekræftet';
+  if (status === 'cancelled') return 'Annulleret';
+  return status;
+}
+
 const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -231,7 +237,7 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
                       <div>{appt.email}</div>
                       <div>{appt.phone}</div>
                     </td>
-                    <td>{appt.status}</td>
+                    <td>{statusLabelDa(appt.status)}</td>
                     <td>
                       {appt.status === 'confirmed' ? (
                         <button
@@ -240,10 +246,10 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
                           onClick={() => setAppointmentStatus(appt.id, 'cancelled')}
                           disabled={cancellingId === appt.id}
                         >
-                          {cancellingId === appt.id ? '...' : 'Afbryd'}
+                          {cancellingId === appt.id ? '…' : 'Annuller'}
                         </button>
                       ) : (
-                        <span className="status-badge">{appt.status}</span>
+                        <span className="status-badge">{statusLabelDa(appt.status)}</span>
                       )}
                     </td>
                   </tr>

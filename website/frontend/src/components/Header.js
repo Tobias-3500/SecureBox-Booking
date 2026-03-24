@@ -27,7 +27,7 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
       <div className="header-content">
         <div className="logo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ cursor: 'pointer' }}>
           <span className="logo-icon">✂️</span>
-          <span className="logo-text">Serenity Salon</span>
+          <span className="logo-text">Nordisk Hår</span>
         </div>
         <nav className="nav">
           <a href="#services" className="nav-link" onClick={handleServicesClick}>Ydelser</a>

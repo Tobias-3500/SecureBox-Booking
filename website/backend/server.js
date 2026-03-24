@@ -113,7 +113,7 @@ function signAndSetToken(res, user) {
 function requireAuth(req, res, next) {
   const token = req.cookies?.auth_token;
   if (!token) {
-    return res.status(401).json({ error: 'Not authenticated' });
+    return res.status(401).json({ error: 'Ikke logget ind' });
   }
 
   try {
@@ -121,13 +121,13 @@ function requireAuth(req, res, next) {
     req.user = decoded;
     next();
   } catch (err) {
-    return res.status(401).json({ error: 'Invalid or expired token' });
+    return res.status(401).json({ error: 'Ugyldigt eller udløbet login' });
   }
 }
 
 function requireAdmin(req, res, next) {
   if (!req.user || !req.user.isAdmin) {
-    return res.status(403).json({ error: 'Admin access required' });
+    return res.status(403).json({ error: 'Kræver administratoradgang' });
   }
   next();
 }
@@ -158,13 +158,13 @@ app.post('/api/customers/register', async (req, res) => {
     const { name, email, phone, password } = req.body;
 
     if (!name || !email || !phone || !password) {
-      return res.status(400).json({ error: 'All fields are required' });
+      return res.status(400).json({ error: 'Alle felter skal udfyldes' });
     }
     if (!/^[^@]+@[^@]+\.[^@]+$/.test(email)) {
-      return res.status(400).json({ error: 'Email is invalid' });
+      return res.status(400).json({ error: 'Ugyldig e-mail' });
     }
     if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+      return res.status(400).json({ error: 'Adgangskoden skal være mindst 8 tegn' });
     }
 
     await ensureCustomersTable();
@@ -172,7 +172,7 @@ app.post('/api/customers/register', async (req, res) => {
     // Check if email already exists
     const existing = await pool.query('SELECT id FROM customers WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'An account with this email already exists' });
+      return res.status(409).json({ error: 'Der findes allerede en konto med denne e-mail' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -197,7 +197,7 @@ app.post('/api/customers/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Error registering customer:', error);
-    res.status(500).json({ error: 'Failed to create account' });
+    res.status(500).json({ error: 'Kunne ikke oprette konto' });
   }
 });
 
@@ -206,7 +206,7 @@ app.post('/api/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return res.status(400).json({ error: 'E-mail og adgangskode er påkrævet' });
     }
 
     await ensureCustomersTable();
@@ -218,12 +218,12 @@ app.post('/api/login', async (req, res) => {
     const user = result.rows[0];
 
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Forkert e-mail eller adgangskode' });
     }
 
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: 'Forkert e-mail eller adgangskode' });
     }
 
     signAndSetToken(res, user);
@@ -238,7 +238,7 @@ app.post('/api/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Error during login:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login mislykkedes' });
   }
 });
 
@@ -260,7 +260,7 @@ app.get('/api/services', async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching services:', error);
-    res.status(500).json({ error: 'Failed to fetch services' });
+    res.status(500).json({ error: 'Kunne ikke hente ydelser' });
   }
 });
 
@@ -277,7 +277,7 @@ app.get('/api/availability/:date', async (req, res) => {
     res.json({ bookedSlots });
   } catch (error) {
     console.error('Error fetching availability:', error);
-    res.status(500).json({ error: 'Failed to fetch availability' });
+    res.status(500).json({ error: 'Kunne ikke hente ledige tider' });
   }
 });
 
@@ -288,7 +288,7 @@ app.post('/api/appointments', async (req, res) => {
 
     // Validate required fields
     if (!name || !email || !phone || !service_id || !appointment_date || !time_slot) {
-      return res.status(400).json({ error: 'All fields are required' });
+      return res.status(400).json({ error: 'Alle felter skal udfyldes' });
     }
 
     // Check if time slot is already booked
@@ -299,7 +299,7 @@ app.post('/api/appointments', async (req, res) => {
     );
 
     if (existingAppointment.rows.length > 0) {
-      return res.status(409).json({ error: 'This time slot is already booked' });
+      return res.status(409).json({ error: 'Denne tid er allerede booket' });
     }
 
     // Create appointment
@@ -313,7 +313,7 @@ app.post('/api/appointments', async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error creating appointment:', error);
-    res.status(500).json({ error: 'Failed to create appointment' });
+    res.status(500).json({ error: 'Kunne ikke oprette booking' });
   }
 });
 
@@ -329,7 +329,7 @@ app.get('/api/admin/appointments', requireAuth, requireAdmin, async (req, res) =
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching appointments:', error);
-    res.status(500).json({ error: 'Failed to fetch appointments' });
+    res.status(500).json({ error: 'Kunne ikke hente bookinger' });
   }
 });
 
@@ -343,7 +343,7 @@ app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, 
     }
     const allowed = ['confirmed', 'cancelled'];
     if (!status || !allowed.includes(status)) {
-      return res.status(400).json({ error: 'Status skal være "confirmed" eller "cancelled"' });
+      return res.status(400).json({ error: 'Ugyldig status' });
     }
     const result = await pool.query(
       `UPDATE appointments SET status = $1 WHERE id = $2 RETURNING *`,
@@ -372,7 +372,7 @@ app.get('/api/admin/system-status', requireAuth, requireAdmin, (req, res) => {
       return res.json({
         backupVm: host,
         reachable: false,
-        message: err.message || 'Ping failed',
+        message: err.message || 'Ping mislykkedes',
       });
     }
     res.json({
@@ -390,7 +390,7 @@ app.post('/api/admin/backup/run', requireAuth, requireAdmin, (req, res) => {
       console.error('Backup script error:', err);
       return res.status(500).json({
         success: false,
-        error: err.message || 'Backup script failed',
+        error: err.message || 'Backup-script fejlede',
       });
     }
     res.json({

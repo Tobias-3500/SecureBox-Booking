@@ -60,14 +60,14 @@ CREATE TABLE IF NOT EXISTS appointments (
 -- If you need multiple statuses per slot, remove this and enforce uniqueness in application logic.
 CREATE UNIQUE INDEX uq_appointments_slot ON appointments (appointment_date, time_slot);
 
--- Optional starter data
+-- Optional starter data (prices DKK, all >= 100)
 INSERT INTO services (name, description, duration_minutes, price_dkk) VALUES
-('Haircut', 'Professional haircut with styling', 30, 250.00),
-('Haircut & Wash', 'Haircut with wash and styling', 45, 350.00),
-('Beard Trim', 'Professional beard trimming and shaping', 20, 150.00),
-('Haircut & Beard', 'Complete grooming package', 50, 400.00),
-('Hair Color', 'Full hair coloring service', 90, 800.00),
-('Hair Styling', 'Professional styling and blow-dry', 30, 300.00)
+('Klipning', 'Professionel klipning med styling', 30, 250.00),
+('Klipning og vask', 'Klipning med vask og styling', 45, 350.00),
+('Skægtrimning', 'Professionel skægtrimning og formning', 20, 150.00),
+('Klipning og skæg', 'Komplet grooming-pakke', 50, 400.00),
+('Hårfarvning', 'Fuld farvning af hår', 90, 800.00),
+('Hårstyling', 'Professionel styling og blow-dry', 30, 300.00)
 ON DUPLICATE KEY UPDATE
   name = VALUES(name);
 
