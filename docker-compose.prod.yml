@@ -48,10 +48,11 @@ services:
       PORT: ${BACKEND_PORT}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN}
+      # BACKUP_* use :- so Compose does not warn when unset (admin backup features stay disabled until you set them in .env).
       ADMIN_EMAIL: ${ADMIN_EMAIL}
-      BACKUP_VM_HOST: ${BACKUP_VM_HOST}
-      BACKUP_SCRIPT_PATH: ${BACKUP_SCRIPT_PATH}
-      BACKUP_LOG_PATH: ${BACKUP_LOG_PATH}
+      BACKUP_VM_HOST: ${BACKUP_VM_HOST:-}
+      BACKUP_SCRIPT_PATH: ${BACKUP_SCRIPT_PATH:-}
+      BACKUP_LOG_PATH: ${BACKUP_LOG_PATH:-}
     expose:
       - "3001"
     depends_on:
