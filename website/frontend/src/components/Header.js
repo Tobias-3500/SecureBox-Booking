@@ -2,6 +2,14 @@ import React from 'react';
 import './Header.css';
 
 const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUser }) => {
+  const handleLogoClick = () => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
+      window.location.href = '/';
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleServicesClick = (e) => {
     e.preventDefault();
     if (onServicesClick) {
@@ -25,7 +33,7 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
   return (
     <header className="header">
       <div className="header-content">
-        <div className="logo" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} style={{ cursor: 'pointer' }}>
+        <div className="logo" onClick={handleLogoClick} style={{ cursor: 'pointer' }} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleLogoClick(); } }}>
           <span className="logo-icon">✂️</span>
           <span className="logo-text">Nordisk Hår</span>
         </div>

@@ -161,19 +161,46 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
 
   return (
     <div className="admin-dashboard">
-      <h2>Admin-oversigt</h2>
-      <p className="admin-subtitle">Bookinger, systemstatus og backup.</p>
+      <div className="admin-dashboard-header">
+        <div>
+          <h2>Admin-oversigt</h2>
+          <p className="admin-subtitle">Bookinger, systemstatus og backup.</p>
+        </div>
+        <a href="/" className="admin-back-home">
+          Tilbage til forside
+        </a>
+      </div>
 
       {/* System Status widget */}
       <div className="admin-widget">
         <h3>Systemstatus</h3>
         {systemStatus ? (
-          <div className={`system-status ${systemStatus.reachable ? 'ok' : 'error'}`}>
-            <span className="status-dot" />
-            <span>
-              Backup-VM ({systemStatus.backupVm}): {systemStatus.reachable ? 'Forbindelse OK' : systemStatus.message}
-            </span>
-          </div>
+          <>
+            <div
+              className={`backup-link-visual ${systemStatus.reachable ? 'backup-link-visual--ok' : 'backup-link-visual--error'}`}
+              aria-hidden
+            >
+              <div className="backup-link-endpoint" title="Website / backend">
+                <span className="backup-link-endpoint-icon backup-link-endpoint-icon--web" />
+                <span className="backup-link-endpoint-label">Website</span>
+              </div>
+              <div className="backup-link-pipeline">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <span key={i} className="backup-link-dot" style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
+              <div className="backup-link-endpoint" title="Backup-VM">
+                <span className="backup-link-endpoint-icon backup-link-endpoint-icon--vm" />
+                <span className="backup-link-endpoint-label">Backup-VM</span>
+              </div>
+            </div>
+            <div className={`system-status system-status-row ${systemStatus.reachable ? 'ok' : 'error'}`}>
+              <span className="status-dot" />
+              <span>
+                {systemStatus.backupVm}: {systemStatus.reachable ? 'Forbindelse OK' : systemStatus.message}
+              </span>
+            </div>
+          </>
         ) : (
           <p>Henter status...</p>
         )}
