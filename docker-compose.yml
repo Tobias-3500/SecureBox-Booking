@@ -49,6 +49,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
     expose:
       - "3001"
     depends_on:

@@ -134,6 +134,13 @@ a.admin-gate-home {
   margin-top: 0.5rem;
 }
 
+.verify-email-intro {
+  font-size: 0.95rem;
+  color: #5a7c65;
+  line-height: 1.55;
+  margin-bottom: 1rem;
+}
+
 /* Simple auth modal */
 .auth-modal-backdrop {
   position: fixed;

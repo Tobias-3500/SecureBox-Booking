@@ -29,3 +29,15 @@ INSERT INTO services (name, description, duration, price) VALUES
 ('Klipning og skæg', 'Komplet grooming-pakke', 50, 400.00),
 ('Hårfarvning', 'Fuld farvning af hår', 90, 800.00),
 ('Hårstyling', 'Professionel styling og blow-dry', 30, 300.00);
+
+-- Kundekonti / brugere (login & booking). is_verified sættes true efter e-mail-bekræftelse.
+CREATE TABLE IF NOT EXISTS customers (
+    id SERIAL PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
+    phone VARCHAR(50) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+    verification_token VARCHAR(64),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

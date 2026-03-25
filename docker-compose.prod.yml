@@ -50,6 +50,8 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       # BACKUP_* use :- so Compose does not warn when unset (admin backup features stay disabled until you set them in .env).
       ADMIN_EMAIL: ${ADMIN_EMAIL}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
       BACKUP_VM_HOST: ${BACKUP_VM_HOST:-}
       BACKUP_SCRIPT_PATH: ${BACKUP_SCRIPT_PATH:-}
       BACKUP_LOG_PATH: ${BACKUP_LOG_PATH:-}

@@ -6,7 +6,7 @@ function formatDkk(value) {
   return new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(Number(value));
 }
 
-const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
+const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequireVerify }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -26,6 +26,17 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
     '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
     '15:00', '15:30', '16:00', '16:30', '17:00', '17:30'
   ];
+
+  useEffect(() => {
+    if (currentUser) {
+      setFormData((prev) => ({
+        ...prev,
+        name: currentUser.name || '',
+        email: currentUser.email || '',
+        phone: currentUser.phone || '',
+      }));
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     if (formData.appointment_date) {
@@ -60,10 +71,15 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
     setError(null);
 
     try {
-      const response = await axios.post(`${apiUrl}/api/appointments`, {
-        ...formData,
-        service_id: service.id
-      });
+      const response = await axios.post(
+        `${apiUrl}/api/appointments`,
+        {
+          service_id: service.id,
+          appointment_date: formData.appointment_date,
+          time_slot: formData.time_slot,
+        },
+        { withCredentials: true }
+      );
 
       if (response.status === 201) {
         setSuccess(true);
@@ -72,6 +88,12 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
         }, 3000);
       }
     } catch (err) {
+      const code = err.response?.data?.code;
+      if (code === 'NOT_VERIFIED' && onRequireVerify) {
+        onRequireVerify();
+        setError('Bekræft din e-mail før du kan booke.');
+        return;
+      }
       setError(err.response?.data?.error || 'Kunne ikke booke. Prøv igen.');
     } finally {
       setLoading(false);
@@ -86,6 +108,39 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
   const maxDate = new Date();
   maxDate.setDate(maxDate.getDate() + 30);
   const maxDateStr = maxDate.toISOString().split('T')[0];
+
+  if (!currentUser) {
+    return (
+      <div className="booking-form-container">
+        <button className="back-button" onClick={onBack}>
+          ← Tilbage til ydelser
+        </button>
+        <div className="booking-card">
+          <h2>Log ind for at booke</h2>
+          <p>Du skal være logget ind med en bekræftet konto for at vælge tid.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!currentUser.isVerified) {
+    return (
+      <div className="booking-form-container">
+        <button className="back-button" onClick={onBack}>
+          ← Tilbage til ydelser
+        </button>
+        <div className="booking-card">
+          <h2>Bekræft din e-mail</h2>
+          <p>Indtast koden fra din bekræftelsesmail for at kunne færdiggøre en booking.</p>
+          {onRequireVerify && (
+            <button type="button" className="submit-button" onClick={onRequireVerify}>
+              Åbn bekræftelse
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -123,41 +178,38 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl }) => {
 
         <form onSubmit={handleSubmit} className="booking-form">
           <div className="form-group">
-            <label htmlFor="name">Fulde navn *</label>
+            <label htmlFor="name">Fulde navn</label>
             <input
               type="text"
               id="name"
               name="name"
               value={formData.name}
-              onChange={handleChange}
-              required
-              placeholder="Indtast dit fulde navn"
+              readOnly
+              className="input-readonly"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="email">E-mail *</label>
+            <label htmlFor="email">E-mail</label>
             <input
               type="email"
               id="email"
               name="email"
               value={formData.email}
-              onChange={handleChange}
-              required
-              placeholder="din.email@eksempel.dk"
+              readOnly
+              className="input-readonly"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="phone">Telefonnummer *</label>
+            <label htmlFor="phone">Telefonnummer</label>
             <input
               type="tel"
               id="phone"
               name="phone"
               value={formData.phone}
-              onChange={handleChange}
-              required
-              placeholder="12 34 56 78"
+              readOnly
+              className="input-readonly"
             />
           </div>
 

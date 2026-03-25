@@ -4,8 +4,21 @@ import ServiceCard from './components/ServiceCard';
 import BookingForm from './components/BookingForm';
 import Header from './components/Header';
 import AdminDashboard from './components/AdminDashboard';
+import VerifyEmailModal from './components/VerifyEmailModal';
 
 const API_URL = process.env.REACT_APP_API_URL || '';
+
+function mapMeResponse(data) {
+  if (!data) return null;
+  return {
+    id: data.id,
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    isAdmin: !!data.isAdmin,
+    isVerified: !!data.isVerified,
+  };
+}
 
 function App() {
   const [services, setServices] = useState([]);
@@ -23,6 +36,8 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [authError, setAuthError] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [showVerifyEmail, setShowVerifyEmail] = useState(false);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
 
   useEffect(() => {
     fetchServices();
@@ -33,7 +48,7 @@ function App() {
     fetch(`${API_URL}/api/me`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
-        if (data) setCurrentUser({ id: data.id, name: data.name, email: data.email, isAdmin: !!data.isAdmin });
+        if (data) setCurrentUser(mapMeResponse(data));
         setAuthChecked(true);
       })
       .catch(() => setAuthChecked(true));
@@ -54,6 +69,15 @@ function App() {
   };
 
   const handleServiceSelect = (service) => {
+    if (!currentUser) {
+      openAuth('login');
+      return;
+    }
+    if (!currentUser.isVerified) {
+      setPendingVerificationEmail(currentUser.email);
+      setShowVerifyEmail(true);
+      return;
+    }
     setSelectedService(service);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -133,15 +157,23 @@ function App() {
 
       const data = await response.json();
       if (!response.ok) {
+        if (data.code === 'EMAIL_NOT_VERIFIED') {
+          setPendingVerificationEmail(data.email || authForm.email);
+          setShowVerifyEmail(true);
+          closeAuth();
+          return;
+        }
         throw new Error(data.error || 'Login mislykkedes');
       }
 
-      setCurrentUser({
-        id: data.id,
-        name: data.name,
-        email: data.email,
-        isAdmin: !!data.isAdmin,
-      });
+      if (isSignup && data.needsVerification) {
+        setPendingVerificationEmail(data.email || authForm.email);
+        setShowVerifyEmail(true);
+        closeAuth();
+        return;
+      }
+
+      setCurrentUser(mapMeResponse(data));
       closeAuth();
     } catch (err) {
       setAuthError(err.message);
@@ -226,6 +258,13 @@ function App() {
                 onBack={() => setSelectedService(null)}
                 onComplete={handleBookingComplete}
                 apiUrl={API_URL}
+                currentUser={currentUser}
+                onRequireVerify={() => {
+                  if (currentUser?.email) {
+                    setPendingVerificationEmail(currentUser.email);
+                    setShowVerifyEmail(true);
+                  }
+                }}
               />
             ) : (
               <section className="services-section" id="services">
@@ -257,6 +296,21 @@ function App() {
       <footer className="footer">
         <p>&copy; 2024 Nordisk Hår. Alle rettigheder forbeholdes.</p>
       </footer>
+
+      {showVerifyEmail && pendingVerificationEmail && (
+        <VerifyEmailModal
+          apiUrl={API_URL}
+          email={pendingVerificationEmail}
+          onClose={() => {
+            setShowVerifyEmail(false);
+          }}
+          onVerified={(data) => {
+            setCurrentUser(mapMeResponse(data));
+            setShowVerifyEmail(false);
+            setPendingVerificationEmail('');
+          }}
+        />
+      )}
 
       {showAuth && (
         <div className="auth-modal-backdrop" onClick={closeAuth}>

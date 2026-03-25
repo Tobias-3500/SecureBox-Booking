@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -7,6 +8,7 @@ const cookieParser = require('cookie-parser');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { Resend } = require('resend');
 require('dotenv').config();
 
 const app = express();
@@ -17,6 +19,8 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const BACKUP_VM_HOST = process.env.BACKUP_VM_HOST || '10.0.0.1';
 const BACKUP_SCRIPT_PATH = process.env.BACKUP_SCRIPT_PATH || '/root/backup.sh';
 const BACKUP_LOG_PATH = process.env.BACKUP_LOG_PATH || '/var/log/backup.log';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || '';
 
 // Middleware
 app.use(cors({
@@ -45,7 +49,7 @@ console.log('Admin email configured:', ADMIN_EMAIL ? `${ADMIN_EMAIL.substring(0,
 
 const pool = new Pool(dbConfig);
 
-// Ensure customers table exists (for auth)
+// Ensure customers table exists (for auth) — matcher kolonner i init.sql
 async function ensureCustomersTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS customers (
@@ -54,9 +58,62 @@ async function ensureCustomersTable() {
       email VARCHAR(255) NOT NULL UNIQUE,
       phone VARCHAR(50) NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
+      is_verified BOOLEAN NOT NULL DEFAULT FALSE,
+      verification_token VARCHAR(64),
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
+  await pool.query(`
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
+  await pool.query(`
+    ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_token VARCHAR(64);
+  `);
+}
+
+// Eksisterende kunder før e-mail-verifikation: ingen token => betragtes som allerede verificeret
+async function migrateLegacyVerifiedCustomers() {
+  await pool.query(`
+    UPDATE customers
+    SET is_verified = true
+    WHERE verification_token IS NULL
+      AND is_verified = false;
+  `);
+  if (ADMIN_EMAIL) {
+    await pool.query(
+      `UPDATE customers SET is_verified = true, verification_token = NULL
+       WHERE lower(email) = lower($1)`,
+      [ADMIN_EMAIL]
+    );
+  }
+}
+
+async function sendVerificationEmail(toEmail, code) {
+  const subject = 'Bekræft din konto — Nordisk Hår';
+  const html = `
+    <p>Hej,</p>
+    <p>Tak for din oprettelse. Bekræft din e-mail med koden:</p>
+    <p style="font-size:1.35rem;letter-spacing:0.12em;font-weight:700;">${code}</p>
+    <p>Indtast koden på websitet under &quot;Bekræft e-mail&quot;.</p>
+    <p>Hvis du ikke har oprettet en konto, kan du se bort fra denne mail.</p>
+  `;
+
+  if (!RESEND_API_KEY || !RESEND_FROM) {
+    console.warn('[email] RESEND_API_KEY eller RESEND_FROM mangler — bekræftelseskode til', toEmail, ':', code);
+    return;
+  }
+
+  const resend = new Resend(RESEND_API_KEY);
+  const { error } = await resend.emails.send({
+    from: RESEND_FROM,
+    to: toEmail,
+    subject,
+    html,
+  });
+  if (error) {
+    console.error('[email] Resend fejl:', error);
+    throw new Error('Kunne ikke sende bekræftelsesmail');
+  }
 }
 
 // Test database connection with retry logic
@@ -88,12 +145,14 @@ pool.on('error', (err) => {
 
 function signAndSetToken(res, user) {
   const isAdmin = ADMIN_EMAIL && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+  const isVerified = !!user.is_verified;
 
   const payload = {
     id: user.id,
     name: user.full_name,
     email: user.email,
     isAdmin,
+    isVerified,
   };
 
   const token = jwt.sign(payload, JWT_SECRET, {
@@ -132,6 +191,26 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+async function requireVerifiedCustomer(req, res, next) {
+  try {
+    const result = await pool.query(
+      'SELECT is_verified FROM customers WHERE id = $1',
+      [req.user.id]
+    );
+    const row = result.rows[0];
+    if (!row || !row.is_verified) {
+      return res.status(403).json({
+        error: 'Du skal bekræfte din e-mail før du kan booke.',
+        code: 'NOT_VERIFIED',
+      });
+    }
+    next();
+  } catch (err) {
+    console.error('requireVerifiedCustomer:', err);
+    res.status(500).json({ error: 'Kunne ikke tjekke konto' });
+  }
+}
+
 // All database queries use parameterized statements ($1, $2, …) to prevent SQL injection.
 // No user or request data is ever interpolated into SQL strings.
 
@@ -143,13 +222,29 @@ app.get('/api/health', (req, res) => {
 });
 
 // Current user from JWT cookie (for session restore / route guard)
-app.get('/api/me', requireAuth, (req, res) => {
-  res.json({
-    id: req.user.id,
-    name: req.user.name,
-    email: req.user.email,
-    isAdmin: !!req.user.isAdmin,
-  });
+app.get('/api/me', requireAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT full_name, email, phone, is_verified FROM customers WHERE id = $1',
+      [req.user.id]
+    );
+    const row = result.rows[0];
+    if (!row) {
+      return res.status(401).json({ error: 'Bruger ikke fundet' });
+    }
+    const isAdmin = ADMIN_EMAIL && row.email && row.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    res.json({
+      id: req.user.id,
+      name: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      isAdmin,
+      isVerified: !!row.is_verified,
+    });
+  } catch (error) {
+    console.error('Error in /api/me:', error);
+    res.status(500).json({ error: 'Kunne ikke hente bruger' });
+  }
 });
 
 // Auth: register new customer
@@ -177,23 +272,47 @@ app.post('/api/customers/register', async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
 
+    const emailLc = email.trim().toLowerCase();
+    const adminLc = ADMIN_EMAIL ? ADMIN_EMAIL.trim().toLowerCase() : '';
+    const preVerified = adminLc && emailLc === adminLc;
+    const verificationToken = preVerified ? null : crypto.randomBytes(4).toString('hex');
+
     const result = await pool.query(
-      `INSERT INTO customers (full_name, email, phone, password_hash)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, full_name, email`,
-      [name, email, phone, passwordHash]
+      `INSERT INTO customers (full_name, email, phone, password_hash, is_verified, verification_token)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, full_name, email, is_verified`,
+      [name, email.trim(), phone, passwordHash, preVerified, verificationToken]
     );
 
     const customer = result.rows[0];
-    signAndSetToken(res, customer);
 
-    const isAdmin = ADMIN_EMAIL && customer.email && customer.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+    if (!preVerified) {
+      try {
+        await sendVerificationEmail(customer.email, verificationToken);
+      } catch (mailErr) {
+        console.error(mailErr);
+        await pool.query('DELETE FROM customers WHERE id = $1', [customer.id]);
+        return res.status(503).json({
+          error: mailErr.message || 'Kunne ikke sende bekræftelsesmail. Prøv igen senere.',
+        });
+      }
+
+      return res.status(201).json({
+        needsVerification: true,
+        email: customer.email,
+        message: 'Vi har sendt en kode til din e-mail. Bekræft kontoen for at kunne logge ind.',
+      });
+    }
+
+    signAndSetToken(res, { ...customer, is_verified: true });
 
     res.status(201).json({
       id: customer.id,
       name: customer.full_name,
       email: customer.email,
-      isAdmin,
+      phone,
+      isAdmin: !!preVerified,
+      isVerified: true,
     });
   } catch (error) {
     console.error('Error registering customer:', error);
@@ -212,7 +331,7 @@ app.post('/api/login', async (req, res) => {
     await ensureCustomersTable();
 
     const result = await pool.query(
-      'SELECT id, full_name, email, password_hash FROM customers WHERE email = $1',
+      'SELECT id, full_name, email, phone, password_hash, is_verified FROM customers WHERE lower(email) = lower($1)',
       [email]
     );
     const user = result.rows[0];
@@ -226,6 +345,14 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Forkert e-mail eller adgangskode' });
     }
 
+    if (!user.is_verified) {
+      return res.status(403).json({
+        error: 'Bekræft din e-mail før du kan logge ind. Tjek din indbakke for koden.',
+        code: 'EMAIL_NOT_VERIFIED',
+        email: user.email,
+      });
+    }
+
     signAndSetToken(res, user);
 
     const isAdmin = ADMIN_EMAIL && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
@@ -234,11 +361,63 @@ app.post('/api/login', async (req, res) => {
       id: user.id,
       name: user.full_name,
       email: user.email,
+      phone: user.phone,
       isAdmin,
+      isVerified: true,
     });
   } catch (error) {
     console.error('Error during login:', error);
     res.status(500).json({ error: 'Login mislykkedes' });
+  }
+});
+
+// Bekræft e-mail med kode fra Resend-mail
+app.post('/api/auth/verify', async (req, res) => {
+  try {
+    const { email, code } = req.body;
+    if (!email || !code) {
+      return res.status(400).json({ error: 'E-mail og kode er påkrævet' });
+    }
+
+    const normalizedEmail = String(email).trim();
+    const normalizedCode = String(code).trim().toLowerCase();
+
+    if (!normalizedCode) {
+      return res.status(400).json({ error: 'Ugyldig kode' });
+    }
+
+    await ensureCustomersTable();
+
+    const result = await pool.query(
+      `UPDATE customers
+       SET is_verified = true, verification_token = NULL
+       WHERE lower(email) = lower($1)
+         AND lower(verification_token) = $2
+         AND is_verified = false
+       RETURNING id, full_name, email, phone, is_verified`,
+      [normalizedEmail, normalizedCode]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).json({ error: 'Forkert kode eller e-mail, eller kontoen er allerede bekræftet.' });
+    }
+
+    const row = result.rows[0];
+    signAndSetToken(res, row);
+
+    const isAdmin = ADMIN_EMAIL && row.email && row.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+    res.json({
+      id: row.id,
+      name: row.full_name,
+      email: row.email,
+      phone: row.phone,
+      isAdmin,
+      isVerified: true,
+    });
+  } catch (error) {
+    console.error('Error in /api/auth/verify:', error);
+    res.status(500).json({ error: 'Bekræftelse mislykkedes' });
   }
 });
 
@@ -281,17 +460,24 @@ app.get('/api/availability/:date', async (req, res) => {
   }
 });
 
-// Create a new appointment
-app.post('/api/appointments', async (req, res) => {
+// Create a new appointment (kræver verificeret, logget ind kunde)
+app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, res) => {
   try {
-    const { name, email, phone, service_id, appointment_date, time_slot } = req.body;
+    const { service_id, appointment_date, time_slot } = req.body;
 
-    // Validate required fields
-    if (!name || !email || !phone || !service_id || !appointment_date || !time_slot) {
-      return res.status(400).json({ error: 'Alle felter skal udfyldes' });
+    if (!service_id || !appointment_date || !time_slot) {
+      return res.status(400).json({ error: 'Ydelse, dato og tid skal angives' });
     }
 
-    // Check if time slot is already booked
+    const cust = await pool.query(
+      'SELECT full_name, email, phone FROM customers WHERE id = $1',
+      [req.user.id]
+    );
+    if (cust.rows.length === 0) {
+      return res.status(401).json({ error: 'Kunde ikke fundet' });
+    }
+    const { full_name: name, email, phone } = cust.rows[0];
+
     const existingAppointment = await pool.query(
       `SELECT id FROM appointments 
        WHERE appointment_date = $1 AND time_slot = $2 AND status = 'confirmed'`,
@@ -302,7 +488,6 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(409).json({ error: 'Denne tid er allerede booket' });
     }
 
-    // Create appointment
     const result = await pool.query(
       `INSERT INTO appointments (name, email, phone, service_id, appointment_date, time_slot, status)
        VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')
@@ -416,7 +601,9 @@ app.get('/api/admin/backup/logs', requireAuth, requireAdmin, (req, res) => {
 });
 
 // Start server after database connection is established
-testConnection().then(() => {
+testConnection().then(async () => {
+  await ensureCustomersTable();
+  await migrateLegacyVerifiedCustomers();
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
   });

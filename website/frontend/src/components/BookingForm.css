@@ -99,6 +99,17 @@
   box-shadow: 0 0 0 3px rgba(107, 159, 120, 0.1);
 }
 
+.form-group input.input-readonly {
+  background: #eef4ef;
+  color: #3d5238;
+  cursor: default;
+}
+
+.form-group input.input-readonly:focus {
+  box-shadow: none;
+  border-color: #e8f5e9;
+}
+
 .time-slots {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
