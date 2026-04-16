@@ -283,7 +283,6 @@ function App() {
 
             <section className="om-os-section" id="om-os">
               <h2 className="section-title">Om os</h2>
-              <p className="om-os-label">Tekst eksempel</p>
               <div className="om-os-content">
                 <p>
                   Nordisk Hår er din lokale frisør med fokus på kvalitet og afslapning. Vi tilbyder klipning, farvning og styling for alle. Kom forbi eller book en tid online.

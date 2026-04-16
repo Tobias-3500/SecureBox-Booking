@@ -85,16 +85,6 @@
   border-top: 1px solid rgba(107, 159, 120, 0.2);
 }
 
-.om-os-label {
-  font-size: 0.9rem;
-  font-weight: 600;
-  color: #6b9f78;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 0.75rem;
-  text-align: center;
-}
-
 .om-os-content {
   max-width: 640px;
   margin: 0 auto;
