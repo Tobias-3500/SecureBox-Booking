@@ -16,8 +16,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       REGISTRY: ghcr.io
-      IMAGE_BACKEND: ghcr.io/${{ github.repository_owner }}/securebox-booking-backend:latest
-      IMAGE_FRONTEND: ghcr.io/${{ github.repository_owner }}/securebox-booking-frontend:latest
+      IMAGE_BACKEND: ghcr.io/tobias-3500/securebox-booking-backend:latest
+      IMAGE_FRONTEND: ghcr.io/tobias-3500/securebox-booking-frontend:latest
 
     steps:
       - name: Checkout repository
