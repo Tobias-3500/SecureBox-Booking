@@ -1,6 +1,4 @@
-# Production / VM: pull and run images only (no build).
-# Use: docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
-# Does not touch certbot/, renew_ssl.sh, or any backup/VPN config on the VM.
+# Production / VM setup
 services:
   nginx:
     image: nginx:alpine
@@ -16,7 +14,7 @@ services:
       frontend:
         condition: service_started
       backend:
-        condition: service_healthy
+        condition: service_healthy # VENTER på at backend svarer OK på /api/health
 
   db:
     image: postgres:15-alpine
@@ -28,6 +26,9 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./website/backend/init.sql:/docker-entrypoint-initdb.d/init.sql
+    expose:
+      - "5432"
+    # --- NYT: HEALTHCHECK FOR DATABASE ---
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -45,21 +46,18 @@ services:
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_NAME: ${DB_NAME}
-      PORT: ${BACKEND_PORT}
+      BACKEND_PORT: ${BACKEND_PORT}
       JWT_SECRET: ${JWT_SECRET}
       CORS_ORIGIN: ${CORS_ORIGIN}
-      # BACKUP_* use :- so Compose does not warn when unset (admin backup features stay disabled until you set them in .env).
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       RESEND_FROM: ${RESEND_FROM:-}
-      BACKUP_VM_HOST: ${BACKUP_VM_HOST:-}
-      BACKUP_SCRIPT_PATH: ${BACKUP_SCRIPT_PATH:-}
-      BACKUP_LOG_PATH: ${BACKUP_LOG_PATH:-}
     expose:
       - "3001"
     depends_on:
       db:
-        condition: service_healthy
+        condition: service_healthy # Starter først når DB rent faktisk er klar til forbindelser
+    # --- NYT: HEALTHCHECK FOR BACKEND ---
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"]
       interval: 10s
@@ -74,7 +72,7 @@ services:
       - "80"
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_healthy # Viser først frontend når backend er klar
 
 volumes:
   postgres_data:

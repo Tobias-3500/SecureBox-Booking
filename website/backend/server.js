@@ -1,3 +1,4 @@
+const { env } = require('./src/config/env');
 const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
@@ -5,22 +6,40 @@ const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
+const rateLimit = require('express-rate-limit');
 const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Resend } = require('resend');
-require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'CHANGE_ME_IN_PRODUCTION';
-const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
-const BACKUP_VM_HOST = process.env.BACKUP_VM_HOST || '10.0.0.1';
-const BACKUP_SCRIPT_PATH = process.env.BACKUP_SCRIPT_PATH || '/root/backup.sh';
-const BACKUP_LOG_PATH = process.env.BACKUP_LOG_PATH || '/var/log/backup.log';
-const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
-const RESEND_FROM = process.env.RESEND_FROM || '';
+const PORT = env.BACKEND_PORT;
+const JWT_SECRET = env.JWT_SECRET;
+const CORS_ORIGIN = env.CORS_ORIGIN;
+const ADMIN_EMAIL = env.ADMIN_EMAIL;
+const BACKUP_VM_HOST = env.BACKUP_VM_HOST;
+const BACKUP_SCRIPT_PATH = env.BACKUP_SCRIPT_PATH;
+const BACKUP_LOG_PATH = env.BACKUP_LOG_PATH;
+const RESEND_API_KEY = env.RESEND_API_KEY;
+const RESEND_FROM = env.RESEND_FROM;
+
+app.set('trust proxy', 1);
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'For mange forespørgsler. Prøv igen senere.' },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'For mange loginforsøg. Prøv igen senere.' },
+});
 
 // Middleware
 app.use(cors({
@@ -32,11 +51,11 @@ app.use(express.json());
 
 // Database connection configuration
 const dbConfig = {
-  host: process.env.DB_HOST || 'db',
-  port: parseInt(process.env.DB_PORT || '5432'),
-  user: process.env.DB_USER || 'salon_user',
-  password: process.env.DB_PASSWORD || 'salon_password',
-  database: process.env.DB_NAME || 'salon_db',
+  host: env.DB_HOST,
+  port: env.DB_PORT,
+  user: env.DB_USER,
+  password: env.DB_PASSWORD,
+  database: env.DB_NAME,
 };
 
 console.log('Database configuration:', {
@@ -159,7 +178,7 @@ function signAndSetToken(res, user) {
     expiresIn: '7d',
   });
 
-  const useSecureCookie = process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.startsWith('https');
+  const useSecureCookie = CORS_ORIGIN.startsWith('https');
   res.cookie('auth_token', token, {
     httpOnly: true,
     secure: useSecureCookie,
@@ -218,8 +237,10 @@ async function requireVerifiedCustomer(req, res, next) {
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+app.use('/api', generalLimiter);
 
 // Current user from JWT cookie (for session restore / route guard)
 app.get('/api/me', requireAuth, async (req, res) => {
@@ -321,7 +342,7 @@ app.post('/api/customers/register', async (req, res) => {
 });
 
 // Auth: login existing customer
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -372,7 +393,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Bekræft e-mail med kode fra Resend-mail
-app.post('/api/auth/verify', async (req, res) => {
+app.post('/api/auth/verify', authLimiter, async (req, res) => {
   try {
     const { email, code } = req.body;
     if (!email || !code) {
@@ -423,7 +444,7 @@ app.post('/api/auth/verify', async (req, res) => {
 
 // Logout: clear auth cookie
 app.post('/api/logout', (req, res) => {
-  const useSecureCookie = process.env.CORS_ORIGIN && process.env.CORS_ORIGIN.startsWith('https');
+  const useSecureCookie = CORS_ORIGIN.startsWith('https');
   res.clearCookie('auth_token', {
     httpOnly: true,
     secure: useSecureCookie,
