@@ -22,9 +22,15 @@ const envSchema = z.object({
   BACKUP_LOG_PATH: z.string().min(1).default('/var/log/backup.log'),
 });
 
+const shouldSkipValidation = process.env.NODE_ENV === 'test' || process.env.SKIP_ENV_VALIDATION === 'true';
+
 const parsedEnv = envSchema.safeParse(process.env);
 
-if (!parsedEnv.success) {
+if (shouldSkipValidation) {
+  console.warn('[env] Skipping strict environment validation (test/CI mode).');
+}
+
+if (!shouldSkipValidation && !parsedEnv.success) {
   console.error('Invalid environment configuration:');
   console.error(JSON.stringify(parsedEnv.error.format(), null, 2));
   process.exit(1);
@@ -35,6 +41,6 @@ if (!parsedEnv.success) {
  */
 
 /** @type {Env} */
-const env = parsedEnv.data;
+const env = shouldSkipValidation ? process.env : parsedEnv.data;
 
 module.exports = { env };

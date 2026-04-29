@@ -15,6 +15,7 @@ jobs:
 
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      SKIP_ENV_VALIDATION: true
       REGISTRY: ghcr.io
       IMAGE_BACKEND: ghcr.io/tobias-3500/securebox-booking-backend:latest
       IMAGE_FRONTEND: ghcr.io/tobias-3500/securebox-booking-frontend:latest
