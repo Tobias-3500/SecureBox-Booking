@@ -1,6 +1,7 @@
 # Production / VM setup
 services:
   # Temporary comment for commit test
+  # Trigger comment for new push
   nginx:
     image: nginx:alpine
     container_name: salon_router
