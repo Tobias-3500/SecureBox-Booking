@@ -37,7 +37,7 @@ services:
       start_period: 10s
 
   backend:
-    image: ghcr.io/tobias-3500/salon-backend:latest
+    image: ghcr.io/tobias-3500/securebox-booking-backend:latest
     container_name: salon_backend
     environment:
       NODE_ENV: ${NODE_ENV}
@@ -66,7 +66,7 @@ services:
       start_period: 15s
 
   frontend:
-    image: ghcr.io/tobias-3500/salon-frontend:latest
+    image: ghcr.io/tobias-3500/securebox-booking-frontend:latest
     container_name: salon_frontend
     expose:
       - "80"

@@ -38,7 +38,7 @@ services:
     build:
       context: ./website/backend
       dockerfile: Dockerfile
-    image: ghcr.io/tobias-3500/salon-backend:latest
+    image: ghcr.io/tobias-3500/securebox-booking-backend:latest
     container_name: salon_backend
     environment:
       NODE_ENV: ${NODE_ENV}
@@ -69,7 +69,7 @@ services:
     build:
       context: ./website/frontend
       dockerfile: Dockerfile
-    image: ghcr.io/tobias-3500/salon-frontend:latest
+    image: ghcr.io/tobias-3500/securebox-booking-frontend:latest
     container_name: salon_frontend
     expose:
       - "80"

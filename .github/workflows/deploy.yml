@@ -16,8 +16,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       REGISTRY: ghcr.io
-      IMAGE_BACKEND: ghcr.io/tobias-3500/salon-backend:latest
-      IMAGE_FRONTEND: ghcr.io/tobias-3500/salon-frontend:latest
+      IMAGE_BACKEND: ghcr.io/${{ github.repository_owner }}/securebox-booking-backend:latest
+      IMAGE_FRONTEND: ghcr.io/${{ github.repository_owner }}/securebox-booking-frontend:latest
 
     steps:
       - name: Checkout repository
@@ -30,7 +30,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push backend image
