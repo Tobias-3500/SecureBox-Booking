@@ -62,17 +62,21 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           # Use docker-compose.prod.yml (image-only); do not overwrite VM's docker-compose.yml.
           # certbot/, renew_ssl.sh, backup script and VPN config on VM are left untouched.
-          source: "docker-compose.prod.yml,.env,nginx.conf,website/"
+          source: "docker-compose.prod.yml,nginx.conf,website/"
           target: ${{ secrets.VM_PROJECT_PATH }}
 
       - name: Deploy on VM
         uses: appleboy/ssh-action@v0.1.10
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.ENV_FILE }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          envs: ENV_FILE_CONTENT
           script: |
             cd ${{ secrets.VM_PROJECT_PATH }}
+            printf '%s\n' "$ENV_FILE_CONTENT" > .env
             if [ -d "nginx.conf" ]; then rm -rf nginx.conf; fi
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
