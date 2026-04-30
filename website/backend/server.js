@@ -13,6 +13,7 @@ const path = require('path');
 const { Resend } = require('resend');
 const logger = require('./src/config/logger');
 const { AuditService, getRequestIp } = require('./src/services/AuditService');
+const GoogleCalendarService = require('./src/services/GoogleCalendarService');
 
 const app = express();
 const PORT = env.BACKEND_PORT;
@@ -72,6 +73,7 @@ logger.info('Admin email configured', {
 
 const pool = new Pool(dbConfig);
 const auditService = new AuditService(pool);
+const googleCalendarService = new GoogleCalendarService({ env, auditService });
 
 // Ensure customers table exists (for auth) — matcher kolonner i init.sql
 async function ensureCustomersTable() {
@@ -92,6 +94,21 @@ async function ensureCustomersTable() {
   `);
   await pool.query(`
     ALTER TABLE customers ADD COLUMN IF NOT EXISTS verification_token VARCHAR(64);
+  `);
+}
+
+async function ensureAppointmentSyncColumns() {
+  await pool.query(`
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(255);
+  `);
+  await pool.query(`
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_sync_status VARCHAR(20) DEFAULT 'pending';
+  `);
+  await pool.query(`
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_last_synced_at TIMESTAMP;
+  `);
+  await pool.query(`
+    ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_sync_error TEXT;
   `);
 }
 
@@ -569,14 +586,31 @@ app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, 
       return res.status(409).json({ error: 'Denne tid er allerede booket' });
     }
 
+    const serviceResult = await pool.query(
+      'SELECT id, name, duration FROM services WHERE id = $1',
+      [service_id]
+    );
+    if (serviceResult.rows.length === 0) {
+      return res.status(400).json({ error: 'Ugyldig ydelse' });
+    }
+    const service = serviceResult.rows[0];
+
     const result = await pool.query(
-      `INSERT INTO appointments (name, email, phone, service_id, appointment_date, time_slot, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'confirmed')
+      `INSERT INTO appointments (name, email, phone, service_id, appointment_date, time_slot, status, google_sync_status)
+       VALUES ($1, $2, $3, $4, $5, $6, 'confirmed', $7)
        RETURNING *`,
-      [name, email, phone, service_id, appointment_date, time_slot]
+      [
+        name,
+        email,
+        phone,
+        service_id,
+        appointment_date,
+        time_slot,
+        googleCalendarService.enabled ? 'pending' : 'disabled',
+      ]
     );
 
-    const appointment = result.rows[0];
+    let appointment = result.rows[0];
 
     await auditService.logAction({
       userId: req.user.id,
@@ -586,6 +620,39 @@ app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, 
       newValue: appointment,
       ipAddress: getRequestIp(req),
     });
+
+    try {
+      const syncResult = await googleCalendarService.createEvent({
+        appointment,
+        service,
+        userId: req.user.id,
+        ipAddress: getRequestIp(req),
+      });
+
+      if (syncResult.eventId) {
+        const synced = await pool.query(
+          `UPDATE appointments
+           SET google_event_id = $1,
+               google_sync_status = 'synced',
+               google_last_synced_at = CURRENT_TIMESTAMP,
+               google_sync_error = NULL
+           WHERE id = $2
+           RETURNING *`,
+          [syncResult.eventId, appointment.id]
+        );
+        appointment = synced.rows[0];
+      }
+    } catch (syncError) {
+      const failed = await pool.query(
+        `UPDATE appointments
+         SET google_sync_status = 'failed',
+             google_sync_error = $1
+         WHERE id = $2
+         RETURNING *`,
+        [syncError.message || 'Google Calendar sync failed', appointment.id]
+      );
+      appointment = failed.rows[0];
+    }
 
     res.status(201).json(appointment);
   } catch (error) {
@@ -634,6 +701,39 @@ app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, 
       [status, id]
     );
     const updatedAppointment = result.rows[0];
+
+    if (status === 'cancelled' && previousAppointment.status !== 'cancelled') {
+      try {
+        const cancelResult = await googleCalendarService.cancelEvent({
+          appointment: previousAppointment,
+          userId: req.user.id,
+          ipAddress: getRequestIp(req),
+        });
+
+        const calendarWasResolved = cancelResult.deleted || cancelResult.missing;
+        const syncStatus = calendarWasResolved ? 'cancelled' : updatedAppointment.google_sync_status;
+        const synced = await pool.query(
+          `UPDATE appointments
+           SET google_sync_status = $1,
+               google_last_synced_at = CASE WHEN $2::boolean THEN CURRENT_TIMESTAMP ELSE google_last_synced_at END,
+               google_sync_error = NULL
+           WHERE id = $3
+           RETURNING *`,
+          [syncStatus, calendarWasResolved, updatedAppointment.id]
+        );
+        Object.assign(updatedAppointment, synced.rows[0]);
+      } catch (syncError) {
+        const failed = await pool.query(
+          `UPDATE appointments
+           SET google_sync_status = 'failed',
+               google_sync_error = $1
+           WHERE id = $2
+           RETURNING *`,
+          [syncError.message || 'Google Calendar delete failed', updatedAppointment.id]
+        );
+        Object.assign(updatedAppointment, failed.rows[0]);
+      }
+    }
 
     await auditService.logAction({
       userId: req.user.id,
@@ -719,6 +819,7 @@ app.get('/api/admin/backup/logs', requireAuth, requireAdmin, (req, res) => {
 // Start server after database connection is established
 testConnection().then(async () => {
   await ensureCustomersTable();
+  await ensureAppointmentSyncColumns();
   await auditService.ensureTable();
   await migrateLegacyVerifiedCustomers();
   app.listen(PORT, '0.0.0.0', () => {

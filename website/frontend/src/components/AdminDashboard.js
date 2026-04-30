@@ -7,6 +7,15 @@ function statusLabelDa(status) {
   return status;
 }
 
+function googleSyncLabelDa(status) {
+  if (status === 'synced') return 'Synket';
+  if (status === 'pending') return 'Afventer';
+  if (status === 'failed') return 'Fejlet';
+  if (status === 'cancelled') return 'Annulleret';
+  if (status === 'disabled') return 'Slået fra';
+  return status || 'Ukendt';
+}
+
 const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -110,9 +119,8 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || 'Kunne ikke opdatere');
       }
-      setAppointments((prev) =>
-        prev.map((a) => (a.id === appointmentId ? { ...a, status } : a))
-      );
+      const updated = await res.json();
+      setAppointments((prev) => prev.map((a) => (a.id === appointmentId ? updated : a)));
     } catch (err) {
       setError(err.message);
     } finally {
@@ -250,6 +258,7 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
                   <th>Kunde</th>
                   <th>Kontakt</th>
                   <th>Status</th>
+                  <th>Kalender</th>
                   <th>Handling</th>
                 </tr>
               </thead>
@@ -265,6 +274,16 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
                       <div>{appt.phone}</div>
                     </td>
                     <td>{statusLabelDa(appt.status)}</td>
+                    <td>
+                      <span className={`calendar-sync-badge calendar-sync-badge--${appt.google_sync_status || 'unknown'}`}>
+                        {googleSyncLabelDa(appt.google_sync_status)}
+                      </span>
+                      {appt.google_sync_error && (
+                        <div className="calendar-sync-error" title={appt.google_sync_error}>
+                          {appt.google_sync_error}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       {appt.status === 'confirmed' ? (
                         <button

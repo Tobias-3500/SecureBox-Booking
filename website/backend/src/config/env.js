@@ -4,6 +4,7 @@ const logger = require('./logger');
 require('dotenv').config();
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
+const booleanStringSchema = z.enum(['true', 'false']).default('false');
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
@@ -21,6 +22,39 @@ const envSchema = z.object({
   BACKUP_VM_HOST: z.string().min(1).default('10.0.0.1'),
   BACKUP_SCRIPT_PATH: z.string().min(1).default('/root/backup.sh'),
   BACKUP_LOG_PATH: z.string().min(1).default('/var/log/backup.log'),
+  GOOGLE_CALENDAR_ENABLED: booleanStringSchema,
+  GOOGLE_CALENDAR_ID: z.string().optional(),
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().email('GOOGLE_SERVICE_ACCOUNT_EMAIL must be a valid email address').optional(),
+  GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional(),
+  GOOGLE_CALENDAR_TIMEZONE: z.string().min(1).default('Europe/Copenhagen'),
+}).superRefine((value, ctx) => {
+  if (value.GOOGLE_CALENDAR_ENABLED !== 'true') {
+    return;
+  }
+
+  if (!value.GOOGLE_CALENDAR_ID) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['GOOGLE_CALENDAR_ID'],
+      message: 'GOOGLE_CALENDAR_ID is required when GOOGLE_CALENDAR_ENABLED=true',
+    });
+  }
+
+  if (!value.GOOGLE_SERVICE_ACCOUNT_EMAIL) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['GOOGLE_SERVICE_ACCOUNT_EMAIL'],
+      message: 'GOOGLE_SERVICE_ACCOUNT_EMAIL is required when GOOGLE_CALENDAR_ENABLED=true',
+    });
+  }
+
+  if (!value.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY'],
+      message: 'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY is required when GOOGLE_CALENDAR_ENABLED=true',
+    });
+  }
 });
 
 const shouldSkipValidation = process.env.NODE_ENV === 'test' || process.env.SKIP_ENV_VALIDATION === 'true';

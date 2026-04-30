@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS appointments (
     appointment_date DATE NOT NULL,
     time_slot VARCHAR(10) NOT NULL,
     status VARCHAR(20) DEFAULT 'confirmed',
+    google_event_id VARCHAR(255),
+    google_sync_status VARCHAR(20) DEFAULT 'pending',
+    google_last_synced_at TIMESTAMP,
+    google_sync_error TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
