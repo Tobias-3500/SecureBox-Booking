@@ -11,6 +11,8 @@ const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Resend } = require('resend');
+const logger = require('./src/config/logger');
+const { AuditService, getRequestIp } = require('./src/services/AuditService');
 
 const app = express();
 const PORT = env.BACKEND_PORT;
@@ -58,15 +60,18 @@ const dbConfig = {
   database: env.DB_NAME,
 };
 
-console.log('Database configuration:', {
+logger.info('Database configuration loaded', {
   host: dbConfig.host,
   port: dbConfig.port,
   user: dbConfig.user,
   database: dbConfig.database
 });
-console.log('Admin email configured:', ADMIN_EMAIL ? `${ADMIN_EMAIL.substring(0, 5)}...` : '(none – set ADMIN_EMAIL in .env)');
+logger.info('Admin email configured', {
+  adminEmail: ADMIN_EMAIL ? `${ADMIN_EMAIL.substring(0, 5)}...` : '(none - set ADMIN_EMAIL in .env)',
+});
 
 const pool = new Pool(dbConfig);
+const auditService = new AuditService(pool);
 
 // Ensure customers table exists (for auth) — matcher kolonner i init.sql
 async function ensureCustomersTable() {
@@ -118,7 +123,10 @@ async function sendVerificationEmail(toEmail, code) {
   `;
 
   if (!RESEND_API_KEY || !RESEND_FROM) {
-    console.warn('[email] RESEND_API_KEY eller RESEND_FROM mangler — bekræftelseskode til', toEmail, ':', code);
+    logger.warn('[email] RESEND_API_KEY eller RESEND_FROM mangler', {
+      toEmail,
+      verificationCode: process.env.NODE_ENV === 'production' ? undefined : code,
+    });
     return;
   }
 
@@ -130,7 +138,7 @@ async function sendVerificationEmail(toEmail, code) {
     html,
   });
   if (error) {
-    console.error('[email] Resend fejl:', error);
+    logger.error('[email] Resend fejl', { error });
     throw new Error('Kunne ikke sende bekræftelsesmail');
   }
 }
@@ -141,16 +149,21 @@ async function testConnection() {
   while (retries > 0) {
     try {
       const result = await pool.query('SELECT NOW()');
-      console.log('Successfully connected to PostgreSQL database:', dbConfig.database);
-      console.log('Database time:', result.rows[0].now);
+      logger.info('Successfully connected to PostgreSQL database', {
+        database: dbConfig.database,
+        databaseTime: result.rows[0].now,
+      });
       return true;
     } catch (error) {
       retries--;
-      console.error(`Database connection failed. Retries left: ${retries}`, error.message);
+      logger.error('Database connection failed', {
+        retriesLeft: retries,
+        error,
+      });
       if (retries > 0) {
         await new Promise(resolve => setTimeout(resolve, 2000));
       } else {
-        console.error('Failed to connect to database after all retries');
+        logger.error('Failed to connect to database after all retries');
         process.exit(1);
       }
     }
@@ -159,7 +172,7 @@ async function testConnection() {
 
 // Handle connection errors
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err);
+  logger.error('Unexpected error on idle client', { error: err });
 });
 
 function signAndSetToken(res, user) {
@@ -225,7 +238,7 @@ async function requireVerifiedCustomer(req, res, next) {
     }
     next();
   } catch (err) {
-    console.error('requireVerifiedCustomer:', err);
+    logger.error('requireVerifiedCustomer failed', { error: err, userId: req.user?.id });
     res.status(500).json({ error: 'Kunne ikke tjekke konto' });
   }
 }
@@ -263,7 +276,7 @@ app.get('/api/me', requireAuth, async (req, res) => {
       isVerified: !!row.is_verified,
     });
   } catch (error) {
-    console.error('Error in /api/me:', error);
+    logger.error('Error in /api/me', { error, userId: req.user?.id });
     res.status(500).json({ error: 'Kunne ikke hente bruger' });
   }
 });
@@ -311,12 +324,28 @@ app.post('/api/customers/register', async (req, res) => {
       try {
         await sendVerificationEmail(customer.email, verificationToken);
       } catch (mailErr) {
-        console.error(mailErr);
+        logger.error('Failed to send verification email during registration', {
+          error: mailErr,
+          customerId: customer.id,
+        });
         await pool.query('DELETE FROM customers WHERE id = $1', [customer.id]);
         return res.status(503).json({
           error: mailErr.message || 'Kunne ikke sende bekræftelsesmail. Prøv igen senere.',
         });
       }
+
+      await auditService.logAction({
+        userId: customer.id,
+        action: 'CUSTOMER_REGISTERED',
+        entityType: 'customer',
+        entityId: customer.id,
+        newValue: {
+          full_name: customer.full_name,
+          email: customer.email,
+          is_verified: false,
+        },
+        ipAddress: getRequestIp(req),
+      });
 
       return res.status(201).json({
         needsVerification: true,
@@ -327,6 +356,19 @@ app.post('/api/customers/register', async (req, res) => {
 
     signAndSetToken(res, { ...customer, is_verified: true });
 
+    await auditService.logAction({
+      userId: customer.id,
+      action: 'CUSTOMER_REGISTERED',
+      entityType: 'customer',
+      entityId: customer.id,
+      newValue: {
+        full_name: customer.full_name,
+        email: customer.email,
+        is_verified: true,
+      },
+      ipAddress: getRequestIp(req),
+    });
+
     res.status(201).json({
       id: customer.id,
       name: customer.full_name,
@@ -336,7 +378,7 @@ app.post('/api/customers/register', async (req, res) => {
       isVerified: true,
     });
   } catch (error) {
-    console.error('Error registering customer:', error);
+    logger.error('Error registering customer', { error });
     res.status(500).json({ error: 'Kunne ikke oprette konto' });
   }
 });
@@ -378,6 +420,14 @@ app.post('/api/login', authLimiter, async (req, res) => {
 
     const isAdmin = ADMIN_EMAIL && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
+    await auditService.logAction({
+      userId: user.id,
+      action: 'LOGIN_SUCCESS',
+      entityType: 'customer',
+      entityId: user.id,
+      ipAddress: getRequestIp(req),
+    });
+
     res.json({
       id: user.id,
       name: user.full_name,
@@ -387,7 +437,7 @@ app.post('/api/login', authLimiter, async (req, res) => {
       isVerified: true,
     });
   } catch (error) {
-    console.error('Error during login:', error);
+    logger.error('Error during login', { error });
     res.status(500).json({ error: 'Login mislykkedes' });
   }
 });
@@ -428,6 +478,16 @@ app.post('/api/auth/verify', authLimiter, async (req, res) => {
 
     const isAdmin = ADMIN_EMAIL && row.email && row.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
+    await auditService.logAction({
+      userId: row.id,
+      action: 'CUSTOMER_VERIFIED',
+      entityType: 'customer',
+      entityId: row.id,
+      oldValue: { is_verified: false },
+      newValue: { is_verified: true },
+      ipAddress: getRequestIp(req),
+    });
+
     res.json({
       id: row.id,
       name: row.full_name,
@@ -437,7 +497,7 @@ app.post('/api/auth/verify', authLimiter, async (req, res) => {
       isVerified: true,
     });
   } catch (error) {
-    console.error('Error in /api/auth/verify:', error);
+    logger.error('Error in /api/auth/verify', { error });
     res.status(500).json({ error: 'Bekræftelse mislykkedes' });
   }
 });
@@ -459,7 +519,7 @@ app.get('/api/services', async (req, res) => {
     const result = await pool.query('SELECT * FROM services ORDER BY id');
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching services:', error);
+    logger.error('Error fetching services', { error });
     res.status(500).json({ error: 'Kunne ikke hente ydelser' });
   }
 });
@@ -476,7 +536,7 @@ app.get('/api/availability/:date', async (req, res) => {
     const bookedSlots = result.rows.map(row => row.time_slot);
     res.json({ bookedSlots });
   } catch (error) {
-    console.error('Error fetching availability:', error);
+    logger.error('Error fetching availability', { error, date: req.params.date });
     res.status(500).json({ error: 'Kunne ikke hente ledige tider' });
   }
 });
@@ -516,9 +576,20 @@ app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, 
       [name, email, phone, service_id, appointment_date, time_slot]
     );
 
-    res.status(201).json(result.rows[0]);
+    const appointment = result.rows[0];
+
+    await auditService.logAction({
+      userId: req.user.id,
+      action: 'APPOINTMENT_CREATED',
+      entityType: 'appointment',
+      entityId: appointment.id,
+      newValue: appointment,
+      ipAddress: getRequestIp(req),
+    });
+
+    res.status(201).json(appointment);
   } catch (error) {
-    console.error('Error creating appointment:', error);
+    logger.error('Error creating appointment', { error, userId: req.user?.id });
     res.status(500).json({ error: 'Kunne ikke oprette booking' });
   }
 });
@@ -534,7 +605,7 @@ app.get('/api/admin/appointments', requireAuth, requireAdmin, async (req, res) =
     );
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching appointments:', error);
+    logger.error('Error fetching appointments', { error, userId: req.user?.id });
     res.status(500).json({ error: 'Kunne ikke hente bookinger' });
   }
 });
@@ -551,16 +622,40 @@ app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, 
     if (!status || !allowed.includes(status)) {
       return res.status(400).json({ error: 'Ugyldig status' });
     }
+
+    const existing = await pool.query('SELECT * FROM appointments WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Booking ikke fundet' });
+    }
+
+    const previousAppointment = existing.rows[0];
     const result = await pool.query(
       `UPDATE appointments SET status = $1 WHERE id = $2 RETURNING *`,
       [status, id]
     );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Booking ikke fundet' });
-    }
-    res.json(result.rows[0]);
+    const updatedAppointment = result.rows[0];
+
+    await auditService.logAction({
+      userId: req.user.id,
+      action: 'APPOINTMENT_STATUS_UPDATED',
+      entityType: 'appointment',
+      entityId: updatedAppointment.id,
+      oldValue: {
+        status: previousAppointment.status,
+      },
+      newValue: {
+        status: updatedAppointment.status,
+      },
+      ipAddress: getRequestIp(req),
+    });
+
+    res.json(updatedAppointment);
   } catch (error) {
-    console.error('Error updating appointment:', error);
+    logger.error('Error updating appointment', {
+      error,
+      userId: req.user?.id,
+      appointmentId: req.params.id,
+    });
     res.status(500).json({ error: 'Kunne ikke opdatere booking' });
   }
 });
@@ -593,7 +688,7 @@ app.get('/api/admin/system-status', requireAuth, requireAdmin, (req, res) => {
 app.post('/api/admin/backup/run', requireAuth, requireAdmin, (req, res) => {
   exec(`"${BACKUP_SCRIPT_PATH}"`, { timeout: 300000 }, (err, stdout, stderr) => {
     if (err) {
-      console.error('Backup script error:', err);
+      logger.error('Backup script error', { error: err, userId: req.user?.id });
       return res.status(500).json({
         success: false,
         error: err.message || 'Backup-script fejlede',
@@ -624,11 +719,12 @@ app.get('/api/admin/backup/logs', requireAuth, requireAdmin, (req, res) => {
 // Start server after database connection is established
 testConnection().then(async () => {
   await ensureCustomersTable();
+  await auditService.ensureTable();
   await migrateLegacyVerifiedCustomers();
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
+    logger.info('Server is running', { port: PORT });
   });
 }).catch((error) => {
-  console.error('Failed to start server:', error);
+  logger.error('Failed to start server', { error });
   process.exit(1);
 });

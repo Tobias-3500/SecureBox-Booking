@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const logger = require('./logger');
 
 require('dotenv').config();
 
@@ -27,12 +28,13 @@ const shouldSkipValidation = process.env.NODE_ENV === 'test' || process.env.SKIP
 const parsedEnv = envSchema.safeParse(process.env);
 
 if (shouldSkipValidation) {
-  console.warn('[env] Skipping strict environment validation (test/CI mode).');
+  logger.warn('[env] Skipping strict environment validation (test/CI mode).');
 }
 
 if (!shouldSkipValidation && !parsedEnv.success) {
-  console.error('Invalid environment configuration:');
-  console.error(JSON.stringify(parsedEnv.error.format(), null, 2));
+  logger.error('Invalid environment configuration', {
+    errors: parsedEnv.error.format(),
+  });
   process.exit(1);
 }
 
