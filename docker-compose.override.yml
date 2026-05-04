@@ -1,12 +1,14 @@
-# Local development override: use HTTP-only nginx (no SSL certs required).
-# Docker Compose merges this automatically when present.
-# For production, use: docker-compose -f docker-compose.yml up (no override).
+# Local development override.
+# Docker Compose merger denne fil automatisk med docker-compose.yml, når du kører lokalt.
+# Brug den til lokal HTTP-test uden SSL-certifikater.
+# På VM/produktion bør du køre uden denne override-fil, eller eksplicit vælge prod-filen.
 services:
   nginx:
+    # Skifter nginx til lokal konfiguration, så localhost virker uden certbot.
     volumes:
       - ./nginx.local.conf:/etc/nginx/conf.d/default.conf:ro
 
-  # Expose frontend on host so you can use http://localhost:3000 if nginx fails
+  # Eksponerer frontend direkte på hosten, så http://localhost:3000 virker lokalt.
   frontend:
     ports:
       - "3000:80"

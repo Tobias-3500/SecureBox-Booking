@@ -1,20 +1,22 @@
 services:
+  # Nginx fungerer som offentlig reverse proxy foran frontend og backend.
   nginx:
     image: nginx:alpine
     container_name: salon_router
     ports:
       - "80:80"
-      - "443:443" # Tilføjet til HTTPS
+      - "443:443" # HTTPS-trafik, når certbot-certifikater er monteret.
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./certbot/conf:/etc/letsencrypt # Gemmer SSL-certifikater
-      - ./certbot/www:/var/www/certbot  # Bruges til verificering af domæne
+      - ./certbot/conf:/etc/letsencrypt # Gemmer SSL-certifikater.
+      - ./certbot/www:/var/www/certbot  # Bruges til domæneverificering.
     depends_on:
       frontend:
         condition: service_started
       backend:
         condition: service_healthy
 
+  # PostgreSQL-databasen gemmer bookingdata i et persistent Docker-volume.
   db:
     image: postgres:15-alpine
     container_name: salon_db
@@ -28,12 +30,14 @@ services:
     expose:
       - "5432"
     healthcheck:
+      # Compose bruger dette til at vente, indtil databasen er klar til forbindelser.
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
 
+  # Backend API'et kører kun internt i Docker-netværket og nås via nginx.
   backend:
     build:
       context: ./website/backend
@@ -59,12 +63,14 @@ services:
       db:
         condition: service_healthy
     healthcheck:
+      # Nginx/frontend venter på, at API'et svarer OK.
       test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 15s
 
+  # Frontend serveres internt på port 80 og eksponeres offentligt gennem nginx.
   frontend:
     build:
       context: ./website/frontend

@@ -1,7 +1,7 @@
-# Production / VM setup
+# Production / VM setup.
+# Denne fil bruger prebuilt images fra GitHub Container Registry og er beregnet til VM'en.
 services:
-  # Temporary comment for commit test
-  # Trigger comment for new push
+  # Nginx er den offentlige reverse proxy, som modtager HTTP/HTTPS trafik.
   nginx:
     image: nginx:alpine
     container_name: salon_router
@@ -17,8 +17,9 @@ services:
       frontend:
         condition: service_started
       backend:
-        condition: service_healthy # VENTER på at backend svarer OK på /api/health
+        condition: service_healthy # Venter på at backend svarer OK på /api/health.
 
+  # Databasen bruger et named volume, så data overlever container-genstarter.
   db:
     image: postgres:15-alpine
     container_name: salon_db
@@ -31,7 +32,7 @@ services:
       - ./website/backend/init.sql:/docker-entrypoint-initdb.d/init.sql
     expose:
       - "5432"
-    # --- NYT: HEALTHCHECK FOR DATABASE ---
+    # Healthcheck sikrer, at backend først starter når PostgreSQL accepterer forbindelser.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -39,6 +40,7 @@ services:
       retries: 5
       start_period: 10s
 
+  # Backend API'et får alle runtime secrets fra .env-filen på VM'en.
   backend:
     image: ghcr.io/tobias-3500/securebox-booking-backend:latest
     container_name: salon_backend
@@ -66,8 +68,8 @@ services:
       - ./logs:/app/logs
     depends_on:
       db:
-        condition: service_healthy # Starter først når DB rent faktisk er klar til forbindelser
-    # --- NYT: HEALTHCHECK FOR BACKEND ---
+        condition: service_healthy # Starter først når DB rent faktisk er klar til forbindelser.
+    # Healthcheck bruges af nginx/frontend afhængighederne.
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:3001/api/health || exit 1"]
       interval: 10s
@@ -75,6 +77,7 @@ services:
       retries: 5
       start_period: 15s
 
+  # Frontend serveres internt og bliver først startet efter backend er sund.
   frontend:
     image: ghcr.io/tobias-3500/securebox-booking-frontend:latest
     container_name: salon_frontend
@@ -82,7 +85,8 @@ services:
       - "80"
     depends_on:
       backend:
-        condition: service_healthy # Viser først frontend når backend er klar
+        condition: service_healthy # Viser først frontend når backend er klar.
 
 volumes:
+  # Persistent database-data. Slet ikke dette volume uden backup.
   postgres_data:
