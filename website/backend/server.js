@@ -25,6 +25,11 @@ const BACKUP_SCRIPT_PATH = env.BACKUP_SCRIPT_PATH;
 const BACKUP_LOG_PATH = env.BACKUP_LOG_PATH;
 const RESEND_API_KEY = env.RESEND_API_KEY;
 const RESEND_FROM = env.RESEND_FROM;
+const BACKUP_LOG_FALLBACK_PATHS = [
+  '/backup-logs/combined.log',
+  '/app/logs/combined.log',
+  '/root/apps/logs/combined.log',
+];
 
 app.set('trust proxy', 1);
 
@@ -802,18 +807,86 @@ app.post('/api/admin/backup/run', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
+function parseBackupLogLine(line) {
+  try {
+    return JSON.parse(line);
+  } catch {
+    return {
+      timestamp: null,
+      level: 'info',
+      message: line,
+    };
+  }
+}
+
+function buildBackupSummary(logData, logPath) {
+  const entries = logData
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map(parseBackupLogLine)
+    .filter((entry) => String(entry.message || '').toLowerCase().includes('backup'));
+
+  const latestStatusEntry = [...entries].reverse().find((entry) => {
+    const message = String(entry.message || '').toLowerCase();
+    return entry.level === 'error' || message.includes('failed') || message.includes('completed');
+  });
+
+  if (!latestStatusEntry) {
+    return null;
+  }
+
+  const message = String(latestStatusEntry.message || '');
+  const failed = latestStatusEntry.level === 'error' || /failed|fejlede/i.test(message);
+
+  return {
+    status: failed ? 'failed' : 'success',
+    timestamp: latestStatusEntry.timestamp || null,
+    message,
+    backupFile: latestStatusEntry.backupFile || null,
+    remoteDest: latestStatusEntry.remoteDest || null,
+    logPath,
+  };
+}
+
+function readBackupLog() {
+  const logPaths = [BACKUP_LOG_PATH, ...BACKUP_LOG_FALLBACK_PATHS]
+    .filter(Boolean)
+    .map((candidate) => path.resolve(candidate));
+  const uniqueLogPaths = [...new Set(logPaths)];
+
+  for (const logPath of uniqueLogPaths) {
+    try {
+      return {
+        logPath,
+        log: fs.readFileSync(logPath, 'utf8'),
+      };
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        throw new Error(`Kunne ikke læse logfil ${logPath}: ${err.message}`);
+      }
+    }
+  }
+
+  return {
+    logPath: uniqueLogPaths[0] || null,
+    log: '',
+  };
+}
+
 // Get backup log (admin-only)
 app.get('/api/admin/backup/logs', requireAuth, requireAdmin, (req, res) => {
-  const logPath = path.resolve(BACKUP_LOG_PATH);
-  fs.readFile(logPath, 'utf8', (err, data) => {
-    if (err) {
-      if (err.code === 'ENOENT') {
-        return res.json({ log: '', message: 'Ingen logfil endnu.' });
-      }
-      return res.status(500).json({ error: 'Kunne ikke læse logfil: ' + err.message });
-    }
-    res.json({ log: data || '' });
-  });
+  try {
+    const { logPath, log } = readBackupLog();
+    res.json({
+      log,
+      logPath,
+      summary: log ? buildBackupSummary(log, logPath) : null,
+      message: log ? undefined : 'Ingen logfil endnu.',
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Start server after database connection is established

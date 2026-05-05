@@ -66,6 +66,7 @@ services:
       - "3001"
     volumes:
       - ./logs:/app/logs
+      - /root/apps/logs:/backup-logs:ro
     depends_on:
       db:
         condition: service_healthy # Starter først når DB rent faktisk er klar til forbindelser.

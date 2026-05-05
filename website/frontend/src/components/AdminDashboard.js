@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import './AdminDashboard.css';
 
 function statusLabelDa(status) {
@@ -22,6 +22,7 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
   const [error, setError] = useState(null);
   const [systemStatus, setSystemStatus] = useState(null);
   const [backupLog, setBackupLog] = useState('');
+  const [backupSummary, setBackupSummary] = useState(null);
   const [backupRunning, setBackupRunning] = useState(false);
   const [backupMessage, setBackupMessage] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
@@ -90,20 +91,22 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
   }, [apiUrl, currentUser]);
 
   // Backup logs
-  const fetchBackupLogs = async () => {
+  const fetchBackupLogs = useCallback(async () => {
     if (!currentUser || !currentUser.isAdmin) return;
     try {
       const res = await fetch(`${apiUrl}/api/admin/backup/logs`, { credentials: 'include' });
       const data = await res.json();
       setBackupLog(data.log != null ? data.log : data.message || '');
+      setBackupSummary(data.summary || null);
     } catch {
       setBackupLog('Kunne ikke hente log.');
+      setBackupSummary(null);
     }
-  };
+  }, [apiUrl, currentUser]);
 
   useEffect(() => {
     if (currentUser && currentUser.isAdmin) fetchBackupLogs();
-  }, [currentUser]);
+  }, [currentUser, fetchBackupLogs]);
 
   const setAppointmentStatus = async (appointmentId, status) => {
     if (!currentUser || !currentUser.isAdmin) return;
@@ -229,6 +232,26 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
         {backupMessage && (
           <p className={backupMessage.type === 'success' ? 'admin-success' : 'admin-error'}>{backupMessage.text}</p>
         )}
+        <div className={`backup-summary backup-summary--${backupSummary?.status || 'unknown'}`}>
+          <span className="backup-summary-dot" />
+          <div>
+            <strong>
+              Seneste backup:{' '}
+              {backupSummary
+                ? backupSummary.status === 'success'
+                  ? 'Succesfuld'
+                  : 'Fejlet'
+                : 'Ukendt'}
+            </strong>
+            <div className="backup-summary-meta">
+              {backupSummary?.timestamp
+                ? new Date(backupSummary.timestamp).toLocaleString('da-DK')
+                : 'Ingen backup-status fundet endnu.'}
+            </div>
+            {backupSummary?.message && <div className="backup-summary-message">{backupSummary.message}</div>}
+            {backupSummary?.backupFile && <div className="backup-summary-meta">{backupSummary.backupFile}</div>}
+          </div>
+        </div>
         <div className="backup-log-section">
           <button type="button" className="admin-button admin-button-secondary" onClick={fetchBackupLogs}>
             Opdater log
