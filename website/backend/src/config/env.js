@@ -1,4 +1,5 @@
 const { z } = require('zod');
+const crypto = require('crypto');
 const logger = require('./logger');
 
 require('dotenv').config();
@@ -61,6 +62,16 @@ const envSchema = z.object({
       path: ['GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY'],
       message: 'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY is required when GOOGLE_CALENDAR_ENABLED=true',
     });
+  } else {
+    try {
+      crypto.createPrivateKey(value.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n'));
+    } catch {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY'],
+        message: 'GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY must be a valid private key when GOOGLE_CALENDAR_ENABLED=true',
+      });
+    }
   }
 });
 

@@ -103,5 +103,9 @@ jobs:
             if ! docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans; then
               echo "Docker Compose deployment fejlede. Seneste backend logs:"
               docker compose --env-file .env -f docker-compose.prod.yml logs --tail=100 backend || true
+              echo "Seneste backend error.log fra ./logs:"
+              tail -n 100 ./logs/error.log || true
+              echo "Seneste backend combined.log fra ./logs:"
+              tail -n 100 ./logs/combined.log || true
               exit 1
             fi

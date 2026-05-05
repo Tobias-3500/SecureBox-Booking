@@ -16,6 +16,15 @@ const logFormat = winston.format.combine(
 );
 
 const transports = [
+  new winston.transports.Console({
+    format: winston.format.combine(
+      winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+      winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
+        const metaText = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
+        return `${timestamp} ${level}: ${stack || message}${metaText}`;
+      })
+    ),
+  }),
   new DailyRotateFile({
     filename: path.join(logDirectory, 'error-%DATE%.log'),
     level: 'error',
@@ -34,21 +43,6 @@ const transports = [
     symlinkName: 'combined.log',
   }),
 ];
-
-if (!isProduction) {
-  transports.push(
-    new winston.transports.Console({
-      format: winston.format.combine(
-        winston.format.colorize(),
-        winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-        winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
-          const metaText = Object.keys(meta).length ? ` ${JSON.stringify(meta)}` : '';
-          return `${timestamp} ${level}: ${stack || message}${metaText}`;
-        })
-      ),
-    })
-  );
-}
 
 const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || 'info',
