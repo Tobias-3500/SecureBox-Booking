@@ -5,6 +5,7 @@ require('dotenv').config();
 
 const portSchema = z.coerce.number().int().min(1).max(65535);
 const booleanStringSchema = z.enum(['true', 'false']).default('false');
+const emailSchema = z.string().email();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
@@ -24,7 +25,7 @@ const envSchema = z.object({
   BACKUP_LOG_PATH: z.string().min(1).default('/var/log/backup.log'),
   GOOGLE_CALENDAR_ENABLED: booleanStringSchema,
   GOOGLE_CALENDAR_ID: z.string().optional(),
-  GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().email('GOOGLE_SERVICE_ACCOUNT_EMAIL must be a valid email address').optional(),
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional(),
   GOOGLE_CALENDAR_TIMEZONE: z.string().min(1).default('Europe/Copenhagen'),
 }).superRefine((value, ctx) => {
@@ -45,6 +46,12 @@ const envSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ['GOOGLE_SERVICE_ACCOUNT_EMAIL'],
       message: 'GOOGLE_SERVICE_ACCOUNT_EMAIL is required when GOOGLE_CALENDAR_ENABLED=true',
+    });
+  } else if (!emailSchema.safeParse(value.GOOGLE_SERVICE_ACCOUNT_EMAIL).success) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['GOOGLE_SERVICE_ACCOUNT_EMAIL'],
+      message: 'GOOGLE_SERVICE_ACCOUNT_EMAIL must be a valid email address when GOOGLE_CALENDAR_ENABLED=true',
     });
   }
 
