@@ -84,6 +84,24 @@ jobs:
                 exit 1
               fi
             done
+            if grep -q "^GOOGLE_CALENDAR_ENABLED=true" .env; then
+              google_required_vars="GOOGLE_CALENDAR_ID GOOGLE_SERVICE_ACCOUNT_EMAIL GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY GOOGLE_CALENDAR_TIMEZONE"
+              for var in $google_required_vars; do
+                if ! grep -q "^${var}=" .env; then
+                  echo "Manglende Google Calendar variabel i .env: ${var}"
+                  exit 1
+                fi
+              done
+              if grep -Eq "DIN_PERSONLIGE_EMAIL_HER|navn-på-service-account|DIN_LANGE_PRIVATE_KEY_HER|\.\.\." .env; then
+                echo "Google Calendar er enabled, men .env indeholder stadig placeholder-værdier"
+                echo "Sæt GOOGLE_CALENDAR_ENABLED=false, eller udfyld rigtige Google Calendar credentials"
+                exit 1
+              fi
+            fi
             if [ -d "nginx.conf" ]; then rm -rf nginx.conf; fi
             docker compose --env-file .env -f docker-compose.prod.yml pull
-            docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans
+            if ! docker compose --env-file .env -f docker-compose.prod.yml up -d --remove-orphans; then
+              echo "Docker Compose deployment fejlede. Seneste backend logs:"
+              docker compose --env-file .env -f docker-compose.prod.yml logs --tail=100 backend || true
+              exit 1
+            fi
