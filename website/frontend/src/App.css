@@ -78,37 +78,6 @@
   margin-bottom: 3rem;
 }
 
-/* About preview section */
-.about-preview-section {
-  padding: 3rem 0;
-  margin-top: 2rem;
-  border-top: 1px solid rgba(107, 159, 120, 0.2);
-}
-
-.about-preview-content {
-  max-width: 640px;
-  margin: 0 auto;
-  color: #5a7c65;
-  line-height: 1.6;
-  text-align: center;
-}
-
-.about-preview-content p {
-  margin: 0 0 1rem;
-}
-
-.about-preview-link {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.75rem 1.5rem;
-  border-radius: 999px;
-  color: #ffffff;
-  background: linear-gradient(135deg, #6b9f78, #a8d5ba);
-  text-decoration: none;
-  font-weight: 600;
-  box-shadow: 0 8px 20px rgba(107, 159, 120, 0.28);
-}
-
 .about-page {
   padding: 3rem 0 2rem;
   animation: fadeInUp 0.7s ease-out;

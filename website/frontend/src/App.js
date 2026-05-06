@@ -90,11 +90,7 @@ function App() {
   useEffect(() => {
     if (loading || typeof window === 'undefined') return;
 
-    const targetId = window.location.hash === '#services'
-      ? 'services'
-      : window.location.hash === '#about'
-        ? 'about'
-        : null;
+    const targetId = window.location.hash === '#services' ? 'services' : null;
 
     if (!targetId) return;
 
@@ -112,7 +108,7 @@ function App() {
         setAuthChecked(true);
       })
       .catch(() => setAuthChecked(true));
-  }, [API_URL]);
+  }, []);
 
   const fetchServices = async () => {
     try {
@@ -145,10 +141,6 @@ function App() {
   const handleBookingComplete = () => {
     setSelectedService(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleOmOsClick = () => {
-    window.location.href = '/om-os';
   };
 
   const handleServicesClick = () => {
@@ -264,7 +256,6 @@ function App() {
   return (
     <div className="App">
       <Header
-        onOmOsClick={handleOmOsClick}
         onServicesClick={handleServicesClick}
         onAuthClick={() => openAuth('login')}
         onLogout={handleLogout}
@@ -344,17 +335,6 @@ function App() {
               </section>
             )}
 
-            <section className="about-preview-section" id="about">
-              <h2 className="section-title">Om os</h2>
-              <div className="about-preview-content">
-                <p>
-                  Lær salonen, stemningen og vores åbningstider bedre at kende.
-                </p>
-                <a className="about-preview-link" href="/om-os">
-                  Gå til Om os
-                </a>
-              </div>
-            </section>
           </>
         )}
       </main>

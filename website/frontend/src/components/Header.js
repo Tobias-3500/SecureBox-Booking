@@ -1,7 +1,7 @@
 import React from 'react';
 import './Header.css';
 
-const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUser }) => {
+const Header = ({ onServicesClick, onAuthClick, onLogout, currentUser }) => {
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
 
   const handleLogoClick = () => {
@@ -29,22 +29,7 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
 
   const handleOmOsClick = (e) => {
     e.preventDefault();
-    if (currentPath === '/admin') {
-      window.location.href = '/#about';
-      return;
-    }
-
-    if (currentPath !== '/') {
-      window.location.href = '/om-os';
-      return;
-    }
-
-    if (onOmOsClick) {
-      onOmOsClick();
-    } else {
-      const section = document.querySelector('#about');
-      if (section) section.scrollIntoView({ behavior: 'smooth' });
-    }
+    window.location.href = '/om-os';
   };
 
   return (
@@ -56,7 +41,7 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
         </div>
         <nav className="nav">
           <a href={currentPath === '/' ? '#services' : '/#services'} className="nav-link" onClick={handleServicesClick}>Ydelser</a>
-          <a href={currentPath === '/admin' ? '/#about' : '/om-os'} className="nav-link" onClick={handleOmOsClick}>Om os</a>
+          <a href="/om-os" className="nav-link" onClick={handleOmOsClick}>Om os</a>
           <a href="/admin" className="nav-link">Admin</a>
           {currentUser ? (
             <>

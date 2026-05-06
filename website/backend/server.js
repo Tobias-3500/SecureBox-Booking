@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
+const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Resend } = require('resend');
@@ -19,6 +20,7 @@ const PORT = env.BACKEND_PORT;
 const JWT_SECRET = env.JWT_SECRET;
 const CORS_ORIGIN = env.CORS_ORIGIN;
 const ADMIN_EMAIL = env.ADMIN_EMAIL;
+const BACKUP_VM_HOST = env.BACKUP_VM_HOST;
 const BACKUP_LOG_PATH = env.BACKUP_LOG_PATH;
 const RESEND_API_KEY = env.RESEND_API_KEY;
 const RESEND_FROM = env.RESEND_FROM;
@@ -762,12 +764,16 @@ app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, 
   }
 });
 
-// System status (admin-only). The frontend displays this as Docker container health.
+// System status (admin-only). The frontend displays Docker health and backup VM connectivity.
 app.get('/api/admin/system-status', requireAuth, requireAdmin, async (req, res) => {
   const containers = [
     { name: 'salon_backend', healthy: true, status: 'healthy' },
     { name: 'salon_frontend', healthy: true, status: 'healthy' },
   ];
+  const timeout = 5000;
+  const cmd = process.platform === 'win32'
+    ? `ping -n 1 -w ${Math.ceil(timeout / 1000)} ${BACKUP_VM_HOST}`
+    : `ping -c 1 -W ${Math.ceil(timeout / 1000)} ${BACKUP_VM_HOST}`;
 
   try {
     await pool.query('SELECT 1');
@@ -777,9 +783,14 @@ app.get('/api/admin/system-status', requireAuth, requireAdmin, async (req, res) 
     containers.splice(1, 0, { name: 'salon_db', healthy: false, status: 'unhealthy' });
   }
 
-  res.json({
-    containers,
-    checkedAt: new Date().toISOString(),
+  exec(cmd, { timeout }, (err) => {
+    res.json({
+      containers,
+      backupVm: BACKUP_VM_HOST,
+      reachable: !err,
+      message: err ? err.message || 'Ping mislykkedes' : 'Forbindelse OK',
+      checkedAt: new Date().toISOString(),
+    });
   });
 });
 

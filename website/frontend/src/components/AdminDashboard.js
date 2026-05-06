@@ -193,22 +193,50 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
 
       {/* System Status widget */}
       <div className="admin-widget">
-        <h3>Docker-status</h3>
+        <h3>Systemstatus</h3>
         {systemStatus ? (
-          <div className="docker-status-list">
-            {dockerContainersFromStatus(systemStatus).map((container) => (
-              <div
-                key={container.name}
-                className={`docker-status-item ${container.healthy ? 'healthy' : 'unhealthy'}`}
-              >
-                <span className="status-dot" />
-                <span className="docker-status-name">{container.name}</span>
-                <span className="docker-status-label">
-                  {container.healthy ? 'Healthy' : 'Unhealthy'}
-                </span>
+          <>
+            <div
+              className={`backup-link-visual ${systemStatus.reachable ? 'backup-link-visual--ok' : 'backup-link-visual--error'}`}
+              aria-hidden
+            >
+              <div className="backup-link-endpoint" title="Website / backend">
+                <span className="backup-link-endpoint-icon backup-link-endpoint-icon--web" />
+                <span className="backup-link-endpoint-label">Website</span>
               </div>
-            ))}
-          </div>
+              <div className="backup-link-pipeline">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <span key={i} className="backup-link-dot" style={{ animationDelay: `${i * 0.15}s` }} />
+                ))}
+              </div>
+              <div className="backup-link-endpoint" title="Backup-VM">
+                <span className="backup-link-endpoint-icon backup-link-endpoint-icon--vm" />
+                <span className="backup-link-endpoint-label">Backup-VM</span>
+              </div>
+            </div>
+            <div className={`system-status system-status-row ${systemStatus.reachable ? 'ok' : 'error'}`}>
+              <span className="status-dot" />
+              <span>
+                {systemStatus.backupVm}: {systemStatus.reachable ? 'Forbindelse OK' : systemStatus.message}
+              </span>
+            </div>
+
+            <h4 className="docker-status-heading">Docker-containere</h4>
+            <div className="docker-status-list">
+              {dockerContainersFromStatus(systemStatus).map((container) => (
+                <div
+                  key={container.name}
+                  className={`docker-status-item ${container.healthy ? 'healthy' : 'unhealthy'}`}
+                >
+                  <span className="status-dot" />
+                  <span className="docker-status-name">{container.name}</span>
+                  <span className="docker-status-label">
+                    {container.healthy ? 'Healthy' : 'Unhealthy'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <p>Henter status...</p>
         )}
