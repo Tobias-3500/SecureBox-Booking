@@ -7,7 +7,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
-const { exec } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { Resend } = require('resend');
@@ -20,8 +19,6 @@ const PORT = env.BACKEND_PORT;
 const JWT_SECRET = env.JWT_SECRET;
 const CORS_ORIGIN = env.CORS_ORIGIN;
 const ADMIN_EMAIL = env.ADMIN_EMAIL;
-const BACKUP_VM_HOST = env.BACKUP_VM_HOST;
-const BACKUP_SCRIPT_PATH = env.BACKUP_SCRIPT_PATH;
 const BACKUP_LOG_PATH = env.BACKUP_LOG_PATH;
 const RESEND_API_KEY = env.RESEND_API_KEY;
 const RESEND_FROM = env.RESEND_FROM;
@@ -765,45 +762,24 @@ app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, 
   }
 });
 
-// System status: check connectivity to backup VM (admin-only)
-app.get('/api/admin/system-status', requireAuth, requireAdmin, (req, res) => {
-  const host = BACKUP_VM_HOST;
-  const timeout = 5000;
-  const cmd = process.platform === 'win32'
-    ? `ping -n 1 -w ${Math.ceil(timeout / 1000)} ${host}`
-    : `ping -c 1 -W ${Math.ceil(timeout / 1000)} ${host}`;
+// System status (admin-only). The frontend displays this as Docker container health.
+app.get('/api/admin/system-status', requireAuth, requireAdmin, async (req, res) => {
+  const containers = [
+    { name: 'salon_backend', healthy: true, status: 'healthy' },
+    { name: 'salon_frontend', healthy: true, status: 'healthy' },
+  ];
 
-  exec(cmd, { timeout }, (err, stdout, stderr) => {
-    if (err) {
-      return res.json({
-        backupVm: host,
-        reachable: false,
-        message: err.message || 'Ping mislykkedes',
-      });
-    }
-    res.json({
-      backupVm: host,
-      reachable: true,
-      message: 'Forbindelse OK',
-    });
-  });
-});
+  try {
+    await pool.query('SELECT 1');
+    containers.splice(1, 0, { name: 'salon_db', healthy: true, status: 'healthy' });
+  } catch (error) {
+    logger.error('Database health check failed', { error, userId: req.user?.id });
+    containers.splice(1, 0, { name: 'salon_db', healthy: false, status: 'unhealthy' });
+  }
 
-// Run manual backup (admin-only, strictly protected)
-app.post('/api/admin/backup/run', requireAuth, requireAdmin, (req, res) => {
-  exec(`"${BACKUP_SCRIPT_PATH}"`, { timeout: 300000 }, (err, stdout, stderr) => {
-    if (err) {
-      logger.error('Backup script error', { error: err, userId: req.user?.id });
-      return res.status(500).json({
-        success: false,
-        error: err.message || 'Backup-script fejlede',
-      });
-    }
-    res.json({
-      success: true,
-      message: 'Backup startet',
-      output: (stdout || '').trim() || (stderr || '').trim(),
-    });
+  res.json({
+    containers,
+    checkedAt: new Date().toISOString(),
   });
 });
 

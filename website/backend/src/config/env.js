@@ -21,8 +21,6 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().min(1, 'RESEND_API_KEY is required'),
   ADMIN_EMAIL: z.string().email('ADMIN_EMAIL must be a valid email address'),
   RESEND_FROM: z.string().min(1, 'RESEND_FROM is required'),
-  BACKUP_VM_HOST: z.string().min(1).default('10.0.0.1'),
-  BACKUP_SCRIPT_PATH: z.string().min(1).default('/root/backup.sh'),
   BACKUP_LOG_PATH: z.string().min(1).default('/var/log/backup.log'),
   GOOGLE_CALENDAR_ENABLED: booleanStringSchema,
   GOOGLE_CALENDAR_ID: z.string().optional(),

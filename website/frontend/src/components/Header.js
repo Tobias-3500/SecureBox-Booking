@@ -2,8 +2,10 @@ import React from 'react';
 import './Header.css';
 
 const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUser }) => {
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+
   const handleLogoClick = () => {
-    if (typeof window !== 'undefined' && window.location.pathname === '/admin') {
+    if (currentPath !== '/') {
       window.location.href = '/';
       return;
     }
@@ -12,6 +14,11 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
 
   const handleServicesClick = (e) => {
     e.preventDefault();
+    if (currentPath !== '/') {
+      window.location.href = '/#services';
+      return;
+    }
+
     if (onServicesClick) {
       onServicesClick();
     } else {
@@ -22,10 +29,20 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
 
   const handleOmOsClick = (e) => {
     e.preventDefault();
+    if (currentPath === '/admin') {
+      window.location.href = '/#about';
+      return;
+    }
+
+    if (currentPath !== '/') {
+      window.location.href = '/om-os';
+      return;
+    }
+
     if (onOmOsClick) {
       onOmOsClick();
     } else {
-      const section = document.querySelector('.om-os-section');
+      const section = document.querySelector('#about');
       if (section) section.scrollIntoView({ behavior: 'smooth' });
     }
   };
@@ -38,8 +55,8 @@ const Header = ({ onOmOsClick, onServicesClick, onAuthClick, onLogout, currentUs
           <span className="logo-text">Nordisk Hår</span>
         </div>
         <nav className="nav">
-          <a href="#services" className="nav-link" onClick={handleServicesClick}>Ydelser</a>
-          <a href="#om-os" className="nav-link" onClick={handleOmOsClick}>Om os</a>
+          <a href={currentPath === '/' ? '#services' : '/#services'} className="nav-link" onClick={handleServicesClick}>Ydelser</a>
+          <a href={currentPath === '/admin' ? '/#about' : '/om-os'} className="nav-link" onClick={handleOmOsClick}>Om os</a>
           <a href="/admin" className="nav-link">Admin</a>
           {currentUser ? (
             <>

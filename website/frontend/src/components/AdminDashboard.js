@@ -16,15 +16,47 @@ function googleSyncLabelDa(status) {
   return status || 'Ukendt';
 }
 
+function formatBackupStatus(summary) {
+  if (!summary) {
+    return {
+      status: 'unknown',
+      title: 'Backup-status er ikke tilgængelig endnu.',
+      meta: 'De automatiske backup-logs er ikke fundet endnu.',
+    };
+  }
+
+  if (summary.status === 'success') {
+    const timestamp = summary.timestamp
+      ? new Date(summary.timestamp).toLocaleString('da-DK')
+      : 'tidspunkt ukendt';
+    return {
+      status: 'success',
+      title: `✅ Database er sikkerhedskopieret (${timestamp})`,
+      meta: 'Seneste automatiske backup blev gennemført.',
+    };
+  }
+
+  return {
+    status: 'failed',
+    title: '⚠️ Fejl i sikkerhedskopiering - Kontakt support',
+    meta: 'Seneste automatiske backup kunne ikke gennemføres.',
+  };
+}
+
+function dockerContainersFromStatus(systemStatus) {
+  return systemStatus?.containers || [
+    { name: 'salon_backend', healthy: false, status: 'unknown' },
+    { name: 'salon_db', healthy: false, status: 'unknown' },
+    { name: 'salon_frontend', healthy: false, status: 'unknown' },
+  ];
+}
+
 const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [systemStatus, setSystemStatus] = useState(null);
-  const [backupLog, setBackupLog] = useState('');
   const [backupSummary, setBackupSummary] = useState(null);
-  const [backupRunning, setBackupRunning] = useState(false);
-  const [backupMessage, setBackupMessage] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
 
   // Redirect to home if logged in but not admin (auth guard)
@@ -71,7 +103,7 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
     fetchAppointments();
   }, [apiUrl, currentUser]);
 
-  // System status: ping backup VM
+  // System status: backend returns service/container health for the admin overview.
   useEffect(() => {
     if (!currentUser || !currentUser.isAdmin) return;
 
@@ -81,7 +113,7 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
         const data = await res.json();
         setSystemStatus(data);
       } catch {
-        setSystemStatus({ backupVm: '10.0.0.1', reachable: false, message: 'Fejl ved tjek' });
+        setSystemStatus({ containers: dockerContainersFromStatus(null) });
       }
     };
 
@@ -90,23 +122,21 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
     return () => clearInterval(interval);
   }, [apiUrl, currentUser]);
 
-  // Backup logs
-  const fetchBackupLogs = useCallback(async () => {
+  // Backup status from automatic backup logs.
+  const fetchBackupStatus = useCallback(async () => {
     if (!currentUser || !currentUser.isAdmin) return;
     try {
       const res = await fetch(`${apiUrl}/api/admin/backup/logs`, { credentials: 'include' });
       const data = await res.json();
-      setBackupLog(data.log != null ? data.log : data.message || '');
       setBackupSummary(data.summary || null);
     } catch {
-      setBackupLog('Kunne ikke hente log.');
       setBackupSummary(null);
     }
   }, [apiUrl, currentUser]);
 
   useEffect(() => {
-    if (currentUser && currentUser.isAdmin) fetchBackupLogs();
-  }, [currentUser, fetchBackupLogs]);
+    if (currentUser && currentUser.isAdmin) fetchBackupStatus();
+  }, [currentUser, fetchBackupStatus]);
 
   const setAppointmentStatus = async (appointmentId, status) => {
     if (!currentUser || !currentUser.isAdmin) return;
@@ -131,29 +161,6 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
     }
   };
 
-  const runManualBackup = async () => {
-    if (!currentUser || !currentUser.isAdmin) return;
-    setBackupRunning(true);
-    setBackupMessage(null);
-    try {
-      const res = await fetch(`${apiUrl}/api/admin/backup/run`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const data = await res.json();
-      if (data.success) {
-        setBackupMessage({ type: 'success', text: data.message || 'Backup startet' });
-        setTimeout(fetchBackupLogs, 2000);
-      } else {
-        setBackupMessage({ type: 'error', text: data.error || 'Backup fejlede' });
-      }
-    } catch (err) {
-      setBackupMessage({ type: 'error', text: err.message || 'Backup fejlede' });
-    } finally {
-      setBackupRunning(false);
-    }
-  };
-
   if (!currentUser) {
     return (
       <div className="admin-dashboard">
@@ -170,6 +177,8 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
     return null;
   }
 
+  const backupStatus = formatBackupStatus(backupSummary);
+
   return (
     <div className="admin-dashboard">
       <div className="admin-dashboard-header">
@@ -184,34 +193,22 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
 
       {/* System Status widget */}
       <div className="admin-widget">
-        <h3>Systemstatus</h3>
+        <h3>Docker-status</h3>
         {systemStatus ? (
-          <>
-            <div
-              className={`backup-link-visual ${systemStatus.reachable ? 'backup-link-visual--ok' : 'backup-link-visual--error'}`}
-              aria-hidden
-            >
-              <div className="backup-link-endpoint" title="Website / backend">
-                <span className="backup-link-endpoint-icon backup-link-endpoint-icon--web" />
-                <span className="backup-link-endpoint-label">Website</span>
+          <div className="docker-status-list">
+            {dockerContainersFromStatus(systemStatus).map((container) => (
+              <div
+                key={container.name}
+                className={`docker-status-item ${container.healthy ? 'healthy' : 'unhealthy'}`}
+              >
+                <span className="status-dot" />
+                <span className="docker-status-name">{container.name}</span>
+                <span className="docker-status-label">
+                  {container.healthy ? 'Healthy' : 'Unhealthy'}
+                </span>
               </div>
-              <div className="backup-link-pipeline">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <span key={i} className="backup-link-dot" style={{ animationDelay: `${i * 0.15}s` }} />
-                ))}
-              </div>
-              <div className="backup-link-endpoint" title="Backup-VM">
-                <span className="backup-link-endpoint-icon backup-link-endpoint-icon--vm" />
-                <span className="backup-link-endpoint-label">Backup-VM</span>
-              </div>
-            </div>
-            <div className={`system-status system-status-row ${systemStatus.reachable ? 'ok' : 'error'}`}>
-              <span className="status-dot" />
-              <span>
-                {systemStatus.backupVm}: {systemStatus.reachable ? 'Forbindelse OK' : systemStatus.message}
-              </span>
-            </div>
-          </>
+            ))}
+          </div>
         ) : (
           <p>Henter status...</p>
         )}
@@ -219,44 +216,14 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
 
       {/* Backup Management */}
       <div className="admin-widget">
-        <h3>Backup-håndtering</h3>
-        <p className="admin-hint">Manuel backup kører scriptet på serveren. Kun administratorer kan udløse backup.</p>
-        <button
-          type="button"
-          className="admin-button admin-button-danger"
-          onClick={runManualBackup}
-          disabled={backupRunning}
-        >
-          {backupRunning ? 'Kører backup...' : 'Kør manuel backup'}
-        </button>
-        {backupMessage && (
-          <p className={backupMessage.type === 'success' ? 'admin-success' : 'admin-error'}>{backupMessage.text}</p>
-        )}
-        <div className={`backup-summary backup-summary--${backupSummary?.status || 'unknown'}`}>
+        <h3>Backup-status</h3>
+        <p className="admin-hint">Status vises ud fra de automatiske backups.</p>
+        <div className={`backup-summary backup-summary--${backupStatus.status}`}>
           <span className="backup-summary-dot" />
           <div>
-            <strong>
-              Seneste backup:{' '}
-              {backupSummary
-                ? backupSummary.status === 'success'
-                  ? 'Succesfuld'
-                  : 'Fejlet'
-                : 'Ukendt'}
-            </strong>
-            <div className="backup-summary-meta">
-              {backupSummary?.timestamp
-                ? new Date(backupSummary.timestamp).toLocaleString('da-DK')
-                : 'Ingen backup-status fundet endnu.'}
-            </div>
-            {backupSummary?.message && <div className="backup-summary-message">{backupSummary.message}</div>}
-            {backupSummary?.backupFile && <div className="backup-summary-meta">{backupSummary.backupFile}</div>}
+            <strong>{backupStatus.title}</strong>
+            <div className="backup-summary-meta">{backupStatus.meta}</div>
           </div>
-        </div>
-        <div className="backup-log-section">
-          <button type="button" className="admin-button admin-button-secondary" onClick={fetchBackupLogs}>
-            Opdater log
-          </button>
-          <pre className="backup-log">{backupLog || 'Ingen logindhold.'}</pre>
         </div>
       </div>
 

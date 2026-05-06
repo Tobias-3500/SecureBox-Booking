@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "C:\\Users\\tobia\\Desktop\\website\\logs\\.6a58adbdcb90b3839b2362de7c770fba4bd792fd-audit.json",
+    "files": [
+        {
+            "date": 1777963087882,
+            "name": "C:\\Users\\tobia\\Desktop\\website\\logs\\combined-2026-05-05.log",
+            "hash": "6d67ec447fa8ba62d27d41fa3173da461c2a032f9faa19ff5ccf9a2f862f3e8d"
+        }
+    ],
+    "hashType": "sha256"
+}

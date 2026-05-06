@@ -20,6 +20,50 @@ function mapMeResponse(data) {
   };
 }
 
+function AboutPage() {
+  const openingHours = [
+    { day: 'Mandag - Fredag', hours: '09:00 - 18:00' },
+    { day: 'Lørdag', hours: '10:00 - 14:00' },
+    { day: 'Søndag', hours: 'Lukket' },
+  ];
+
+  return (
+    <section className="about-page">
+      <div className="about-page-hero">
+        <p className="eyebrow">Om Nordisk Hår</p>
+        <h1>Rolig salonstemning, personlig rådgivning og godt håndværk.</h1>
+        <p>
+          Nordisk Hår er din lokale frisør med fokus på kvalitet og afslapning.
+          Vi tilbyder klipning, farvning og styling for alle, og vi tager os tid
+          til at finde det look, der passer til dig.
+        </p>
+      </div>
+
+      <div className="about-page-grid">
+        <div className="about-card">
+          <h2>Velkommen indenfor</h2>
+          <p>
+            Kom forbi salonen eller book en tid online. Vi lægger vægt på en
+            behagelig oplevelse fra første hej til sidste styling.
+          </p>
+        </div>
+
+        <div className="opening-hours-card">
+          <h2>Åbningstider</h2>
+          <div className="opening-hours-list">
+            {openingHours.map((item) => (
+              <div className="opening-hours-row" key={item.day}>
+                <span>{item.day}</span>
+                <strong>{item.hours}</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [services, setServices] = useState([]);
   const [selectedService, setSelectedService] = useState(null);
@@ -42,6 +86,22 @@ function App() {
   useEffect(() => {
     fetchServices();
   }, []);
+
+  useEffect(() => {
+    if (loading || typeof window === 'undefined') return;
+
+    const targetId = window.location.hash === '#services'
+      ? 'services'
+      : window.location.hash === '#about'
+        ? 'about'
+        : null;
+
+    if (!targetId) return;
+
+    requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth' });
+    });
+  }, [loading, selectedService]);
 
   // Restore session from JWT cookie (for route guard and /admin)
   useEffect(() => {
@@ -88,8 +148,7 @@ function App() {
   };
 
   const handleOmOsClick = () => {
-    const section = document.querySelector('.om-os-section');
-    if (section) section.scrollIntoView({ behavior: 'smooth' });
+    window.location.href = '/om-os';
   };
 
   const handleServicesClick = () => {
@@ -180,7 +239,9 @@ function App() {
     }
   };
 
-  const isAdminRoute = typeof window !== 'undefined' && window.location.pathname === '/admin';
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isAdminRoute = currentPath === '/admin';
+  const isAboutRoute = currentPath === '/om-os';
 
   if (loading) {
     return (
@@ -239,6 +300,8 @@ function App() {
               </button>
             </div>
           )
+        ) : isAboutRoute ? (
+          <AboutPage />
         ) : (
           <>
             <section className="hero-section">
@@ -281,12 +344,15 @@ function App() {
               </section>
             )}
 
-            <section className="om-os-section" id="om-os">
+            <section className="about-preview-section" id="about">
               <h2 className="section-title">Om os</h2>
-              <div className="om-os-content">
+              <div className="about-preview-content">
                 <p>
-                  Nordisk Hår er din lokale frisør med fokus på kvalitet og afslapning. Vi tilbyder klipning, farvning og styling for alle. Kom forbi eller book en tid online.
+                  Lær salonen, stemningen og vores åbningstider bedre at kende.
                 </p>
+                <a className="about-preview-link" href="/om-os">
+                  Gå til Om os
+                </a>
               </div>
             </section>
           </>
@@ -312,8 +378,16 @@ function App() {
       )}
 
       {showAuth && (
-        <div className="auth-modal-backdrop" onClick={closeAuth}>
-          <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="auth-modal-backdrop">
+          <div className="auth-modal" role="dialog" aria-modal="true">
+            <button
+              type="button"
+              className="auth-close-button"
+              onClick={closeAuth}
+              aria-label="Luk login-vindue"
+            >
+              ×
+            </button>
             <div className="auth-toggle">
               <button
                 type="button"
