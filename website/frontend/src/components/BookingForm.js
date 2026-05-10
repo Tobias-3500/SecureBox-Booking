@@ -94,6 +94,12 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequi
         setError('Bekræft din e-mail før du kan booke.');
         return;
       }
+      if (err.response?.status === 409) {
+        await fetchAvailability(formData.appointment_date);
+        setFormData(prev => ({ ...prev, time_slot: '' }));
+        setError('Den valgte tid er desværre ikke længere ledig. Vælg venligst en anden tid.');
+        return;
+      }
       setError(err.response?.data?.error || 'Kunne ikke booke. Prøv igen.');
     } finally {
       setLoading(false);
@@ -101,7 +107,18 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequi
   };
 
   const getAvailableSlots = () => {
-    return timeSlots.filter(slot => !bookedSlots.includes(slot));
+    const isToday = formData.appointment_date === today;
+    return timeSlots.filter(slot => {
+      if (bookedSlots.includes(slot)) return false;
+      if (isToday) {
+        const now = new Date();
+        const [hours, minutes] = slot.split(':').map(Number);
+        const slotTime = new Date();
+        slotTime.setHours(hours, minutes, 0, 0);
+        if (slotTime <= now) return false;
+      }
+      return true;
+    });
   };
 
   const today = new Date().toISOString().split('T')[0];
