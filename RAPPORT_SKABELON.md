@@ -14,15 +14,15 @@
 
 ## Abstract
 
-This report documents the design and development of a full-stack web-based appointment booking system for the fictional haircut salon "Nordisk Hår". The system enables customers to create accounts, verify their identity via email, and book appointments online. A role-based admin panel gives the salon owner full control over bookings, with real-time synchronisation to Google Calendar.
+Denne rapport dokumenterer design og udvikling af et fuldt funktionelt, webbaseret bookingsystem til frisørsalonen "Nordisk Hår". Systemet løser en konkret udfordring, som mange små servicevirksomheder står over for: manuel og fejlbehæftet håndtering af tidsbestillinger via telefon og SMS. Formålet med projektet har været at levere en sikker, brugervenlig og driftsklar løsning, som kan sættes i produktion og bruges i en virkelig kontekst.
 
-The problem addressed is the inefficiency and error-prone nature of manual appointment management in small service businesses. The goal was to deliver a secure, containerised, and deployable production system.
+Systemet giver kunderne mulighed for at oprette en konto, bekræfte deres identitet via e-mail og booke ledige tider online. Salonens ejer har adgang til et rollebaseret administrationspanel, hvorfra alle bookinger kan ses og administreres. Nye bookinger synkroniseres automatisk til Google Kalender, og alle vigtige handlinger registreres i en audit log.
 
-The system is built on a three-tier architecture: a React 18 frontend, a Node.js/Express REST API backend, and a PostgreSQL database — all orchestrated with Docker Compose and deployed to a Linux VM via a GitHub Actions CI/CD pipeline. Security was a primary concern, leading to implementation of JWT authentication with httpOnly cookies, bcrypt password hashing, email verification, rate limiting, parameterised SQL queries, Fail2ban, and HTTPS via Let's Encrypt.
+Den tekniske løsning er bygget på en tre-lagsarkitektur bestående af en React 18-frontend, en Node.js/Express REST API-backend og en PostgreSQL-database — orchestreret med Docker Compose og deployeret til en Linux-server via en automatiseret GitHub Actions CI/CD-pipeline. Sikkerhed har været en central prioritet i hele udviklingsforløbet, hvilket har ført til implementering af JWT-autentifikation med httpOnly cookies, bcrypt-hashning af adgangskoder, e-mailverifikation, rate limiting, parameteriserede SQL-forespørgsler, Fail2ban og HTTPS via Let's Encrypt.
 
-Key theories applied include REST architectural principles, OWASP Top 10 security guidelines, and the MoSCoW prioritisation method for requirements engineering.
+De primære teorier og metoder, der er anvendt i projektet, omfatter REST-arkitekturprincipperne, OWASP Top 10-retningslinjerne for websikkerhed samt MoSCoW-metoden til prioritering af krav.
 
-The result is a fully operational system accessible over HTTPS, with automated deployment, audit logging, and an admin dashboard — fulfilling all functional and non-functional requirements defined at project start.
+Resultatet er et fuldt operationelt system, der er tilgængeligt over HTTPS, med automatiseret deployment, audit logging og et administrationspanel — og som opfylder samtlige funktionelle og ikke-funktionelle krav defineret ved projektstart.
 
 ---
 
@@ -71,7 +71,51 @@ Underspørgsmål:
 
 ## 3. Kravspecifikation
 
-Kravspecifikationen er udarbejdet med MoSCoW-metoden¹, som prioriterer krav i kategorierne *Must have*, *Should have*, *Could have* og *Won't have*.
+### 3.1 Metode og fremgangsmåde
+
+Kravspecifikationen er udarbejdet med MoSCoW-metoden¹, som er en anerkendt prioriteringsmetode inden for kravhåndtering og agil softwareudvikling. Metoden opdeler krav i fire kategorier: *Must have* (skal med), *Should have* (bør med), *Could have* (kan med hvis tid) og *Won't have* (medtages ikke i denne iteration). Fordelen ved MoSCoW er, at den tvinger en eksplicit prioriteringsdiskussion, der sikrer at de mest værdiskabende funktioner færdiggøres først — frem for at projektet forsøger at realisere alt på én gang og risikerer at levere ingenting fuldt ud.
+
+Kravene er identificeret ud fra en analyse af målgruppens behov: en lille frisørsalon der ønsker at digitalisere sin booking, og dens kunder der forventer en nem og selvbetjent oplevelse. Der er bevidst fravalgt krav, der ville øge kompleksiteten markant uden at tilføre tilsvarende kerneværdi i projektets tidsramme.
+
+### 3.2 Begrundelse for prioriterede krav
+
+**Must have — Kundeoprettelse, login og e-mailverifikation**
+
+Et bookingsystem forudsætter at vi ved, hvem der booker. Uden autentifikation ville det ikke være muligt at knytte en booking til en specifik person, og der ville ikke være nogen barriere mod misbrug, f.eks. at én person spammer systemet med falske bookinger. Login er derfor en absolut forudsætning for alt andet funktionalitet.
+
+E-mailverifikation er valgt som *Must have* frem for f.eks. telefonverifikation (SMS) af to grunde: dels er det væsentligt billigere i drift (SMS-APIs som Twilio koster per besked, mens e-mail via Resend er gratis i det forventede volumen), dels er det teknisk enklere at implementere uden afhængighed af mobilnetværk. Verifikationen sikrer desuden at de kontaktoplysninger, salonen har på en kunde, faktisk er gyldige.
+
+**Must have — Visning af ydelser og booking af ledige tider**
+
+Dette er systemets primære forretningsværdi. Uden mulighed for at se og booke tider er der ingen grund til at systemet eksisterer. Tilgængeligheds-API'et (`GET /api/availability/:date`) returnerer allerede booket tidslots, så frontend kan forhindre dobbelttid. Alternativet — at håndtere konflikter manuelt af salonen — er netop det problem der ønskes løst.
+
+**Must have — Persistent database**
+
+Data skal overleve servergenstart. En simpel in-memory løsning som f.eks. en JSON-fil eller et JavaScript-array ville være tilstrækkeligt til et proof-of-concept, men er uacceptabelt i produktion. PostgreSQL er valgt frem for alternativer som MySQL/MariaDB grundet bedre understøttelse af JSONB-kolonner (til audit log), stærk ACID-compliance og bred dokumentation. En NoSQL-løsning som MongoDB er fravalgt, da bookingdata er naturligt relationelt struktureret (kunder, ydelser, tider) og drager stor fordel af fremmednøglerelationer og JOINs.
+
+**Should have — Google Kalender-synkronisering**
+
+Google Kalender-integration er kategoriseret som *Should have* frem for *Must have*, fordi systemet er fuldt funktionelt uden den — salonens ejer kan stadig se alle bookinger i administrationspanelet. Integrationen tilfører dog stor praktisk værdi: frisøren bruger sandsynligvis allerede Google Kalender til sin arbejdsdag, og automatisk synkronisering eliminerer det manuelle arbejde med at overføre bookinger. Integrationen er implementeret med en Google Service Account med minimalt tildelt scope (`calendar.events`), hvilket følger princippet om *least privilege*.
+
+**Should have — Audit log**
+
+En audit log er ikke synlig for slutbrugeren, men er afgørende for driftssikkerhed og ansvarlighed. Loggen registrerer hvem der har gjort hvad, hvornår og fra hvilken IP-adresse. Dette er særligt vigtigt for handlinger som kontooprettelse, login-forsøg og ændringer af bookingstatus. Uden en audit log ville det f.eks. ikke være muligt at efterforske hvis en booking uventet ændres eller slettes. Audit logging er desuden god praksis i henhold til OWASP Top 10 (A09 – Security Logging and Monitoring Failures)⁴.
+
+**Should have — HTTPS i produktion**
+
+HTTPS er en absolut minimumskrav for enhver webapplikation der håndterer persondata og login. Uden kryptering ville adgangskoder og JWT-tokens transmitteres i klartekst over netværket og kunne aflyttes. Certbot og Let's Encrypt er valgt frem for betalte SSL-certifikater, da de tilbyder gratis automatisk fornyelse og er anerkendt industristandard.
+
+**Could have — Medarbejderrolle og kunde-selvbetjening**
+
+En dedikeret medarbejderrolle — der kan se dagens bookinger men ikke har fuld administratoradgang — ville øge systemets brugbarhed i en salon med ansatte. Dette krav er nedprioriteret til *Could have* fordi det kræver en udvidelse af rollemodellen, nye frontend-sider og yderligere API-endpoints, hvilket ville have presset projektets tidsramme. Grundstrukturen med `isAdmin`-flaget i JWT-tokenet er dog designet til at gøre denne udvidelse relativt enkel i en fremtidig iteration.
+
+Kunde-selvbetjening (visning og annullering af egne bookinger) er ligeledes *Could have*. Det ville forbedre brugeroplevelsen markant, men er ikke nødvendigt for at systemets kernefunktion — booking — virker.
+
+**Won't have — Betalingsintegration og mobilapp**
+
+Betalingsintegration via f.eks. Stripe er et komplekst domæne med egne certificeringskrav (PCI DSS) og ville alene udgøre et selvstændigt projekt. Det er ikke en del af kravene fra salonens side og er derfor eksplicit udelukket. En dedikeret mobilapp er fravalgt til fordel for et responsivt webdesign, der fungerer på alle skærmstørrelser — dette giver 90% af fordelene ved en mobilapp uden den tilhørende kompleksitet i udvikling og vedligeholdelse.
+
+### 3.3 Funktionelle krav
 
 ### Tabel 1: Funktionelle krav (MoSCoW)
 
@@ -90,6 +134,10 @@ Kravspecifikationen er udarbejdet med MoSCoW-metoden¹, som prioriterer krav i k
 | Won't have    | Betalingsintegration (f.eks. Stripe)                                 |
 | Won't have    | Mobilapp                                                             |
 
+### 3.4 Ikke-funktionelle krav
+
+De ikke-funktionelle krav definerer systemets kvalitetsegenskaber — ikke hvad systemet gør, men hvordan det gør det. Disse er særligt vigtige i et produktionssystem, hvor sikkerhed, driftsstabilitet og vedligeholdelighed ikke er valgfrie.
+
 ### Tabel 2: Ikke-funktionelle krav
 
 | Kategori        | Krav                                                                |
@@ -97,76 +145,291 @@ Kravspecifikationen er udarbejdet med MoSCoW-metoden¹, som prioriterer krav i k
 | Sikkerhed       | Adgangskoder hashes med bcrypt (cost factor 10)                     |
 | Sikkerhed       | JWT-tokens lagres i httpOnly cookies (ikke localStorage)            |
 | Sikkerhed       | Alle SQL-forespørgsler er parameteriserede                           |
-| Sikkerhed       | Rate limiting på auth-endpoints (5 forsøg/time)                    |
+| Sikkerhed       | Rate limiting på auth-endpoints (5 forsøg/time)                     |
 | Ydeevne         | API svarer inden for 500 ms under normal belastning                 |
 | Driftsikkerhed  | Systemet kan deployeres reproducerbart med Docker Compose           |
 | Vedligeholdelse | Kode er struktureret i tydelige lag (frontend/backend/database)     |
+
+Valget af bcrypt frem for f.eks. MD5 eller SHA-256 til adgangskodelagring er bevidst: bcrypt er designet til at være beregningsmæssigt tungt og indeholder et salt, hvilket gør det modstandsdygtigt over for rainbow table-angreb og brute force. Cost factor 10 er den anbefalede standardværdi og balancerer sikkerhed og serverbelastning. JWT-tokens i httpOnly cookies er valgt frem for localStorage, fordi JavaScript ikke kan tilgå httpOnly cookies — og dermed er tokens beskyttet mod XSS-angreb (Cross-Site Scripting), som er en af de hyppigst forekommende sårbarheder i webapplikationer.
 
 ---
 
 ## 4. Systemarkitektur
 
-Systemet er bygget på en klassisk tre-lagsarkitektur²:
+### 4.1 Overordnet arkitektur
+
+Systemet er bygget på en klassisk **tre-lagsarkitektur**², der opdeler applikationen i tre ansvarsmæssigt adskilte lag: præsentationslag (frontend), applikationslag (backend API) og datalag (database). Denne adskillelse sikrer at hvert lag kan udvikles, testes og skaleres uafhængigt af de andre.
+
+Alle tre lag kører som isolerede Docker-containere og orkestreres af Docker Compose. En fjerde container — en nginx reverse proxy — fungerer som systemets eneste indgangspunkt fra omverdenen. Det er et bevidst sikkerhedsvalg: hverken backend eller database eksponerer porte direkte til internettet. Al trafik går igennem nginx, som terminerer SSL og fordeler forespørgsler til de rette containere internt i Docker-netværket.
+
+### Figur 1: Systemarkitekturdiagram
+
+```mermaid
+flowchart TD
+    Browser(["🌐 Browser\n(React SPA)"])
+
+    subgraph Internet
+        Browser
+    end
+
+    subgraph VM ["Linux VM (Produktion)"]
+        subgraph Docker ["Docker netværk (intern kommunikation)"]
+            nginx["nginx\n(Reverse Proxy)\nPort 80 → 443 redirect\nPort 443 SSL-terminering"]
+
+            subgraph Containers ["Containere"]
+                frontend["salon_frontend\n(nginx:alpine)\nServerer statiske\nReact-filer\nPort 80 (intern)"]
+                backend["salon_backend\n(Node.js / Express)\nREST API\nPort 3001 (intern)"]
+                db["salon_db\n(PostgreSQL 15)\nPort 5432 (intern)"]
+            end
+
+            certbot["certbot/conf\n(Let's Encrypt\nSSL-certifikater)"]
+        end
+    end
+
+    subgraph Eksternt ["Eksterne tjenester"]
+        resend["Resend API\n(E-mail)"]
+        gcal["Google Calendar API\n(Kalendersynk.)"]
+    end
+
+    Browser -- "HTTPS :443" --> nginx
+    nginx -- "HTTP /api/*\n→ salon_backend:3001" --> backend
+    nginx -- "HTTP /*\n→ salon_frontend:80" --> frontend
+    nginx -. "Monterer certifikater" .-> certbot
+    backend -- "TCP :5432" --> db
+    backend -- "HTTPS" --> resend
+    backend -- "HTTPS" --> gcal
+```
+
+### 4.2 nginx — reverse proxy og SSL-terminering
+
+nginx er det eneste led i systemet der er eksponeret mod internettet (port 80 og 443). Den har to centrale opgaver:
+
+**HTTP → HTTPS-omdirigering:** Al trafik på port 80 omdirigeres automatisk med en `301 Moved Permanently` til HTTPS. Dette sikrer at ingen data nogensinde transmitteres i klartekst.
+
+**Routing af forespørgsler:** På port 443 skelner nginx mellem to typer forespørgsler baseret på URL-sti:
+- Forespørgsler til `/api/*` proxies videre til `salon_backend` på port 3001
+- Alle øvrige forespørgsler (`/`) proxies til `salon_frontend` på port 80
+
+nginx videresender desuden de originale HTTP-headere (`X-Real-IP`, `X-Forwarded-For`, `X-Forwarded-Proto`) til backend-containeren, så applikationen kan logge den rigtige klient-IP-adresse frem for nginx's interne IP.
+
+SSL-certifikaterne er udstedt af Let's Encrypt via Certbot og monteres som et Docker-volume ind i nginx-containeren. Certbot-udfordringen (domæneverifikation) foregår via mappen `/var/www/certbot`, som ligeledes er monteret ind i nginx. Kun TLS 1.2 og 1.3 er tilladt.
+
+### 4.3 Frontend-containeren
+
+Frontend-applikationen er en React 18 Single Page Application (SPA). Under CI/CD-pipelinen bygges applikationen til statiske filer (`npm run build`), der kopieres ind i en `nginx:alpine`-container. Denne container serverer udelukkende de statiske filer internt i Docker-netværket — den er aldrig tilgængelig direkte fra internettet.
+
+Fordi applikationen er en SPA, håndterer React Router al navigation klient-sidebaseret. nginx-konfigurationen i frontend-containeren er konfigureret til at returnere `index.html` for alle stier, så direkte URL-adgang (f.eks. `/admin`) fungerer korrekt.
+
+### 4.4 Backend-containeren
+
+Backend-containeren kører en Node.js/Express-applikation og eksponerer kun port 3001 internt i Docker-netværket. Den har ansvar for al forretningslogik: autentifikation, bookingvalidering, e-mailafsendelse og Google Kalender-synkronisering.
+
+Ved opstart forsøger backend at oprette forbindelse til databasen med automatisk retry-logik (op til 5 forsøg med 2 sekunders interval). Dette er nødvendigt fordi Docker Compose godt kan starte containere parallelt, og databasen kan have brug for et par sekunder på at initialisere sig, inden den accepterer forbindelser. Backend har desuden et healthcheck-endpoint (`GET /api/health`) som Docker og nginx bruger til at verificere at applikationen er oppe.
+
+### 4.5 Databasecontaineren og datalagring
+
+PostgreSQL-databasen kører i en `postgres:15-alpine`-container og eksponerer kun port 5432 internt. Databasens data gemmes i et navngivet Docker-volume (`postgres_data`), som overlever container-genstarter og opdateringer. Databaseskemaet initialiseres automatisk via `init.sql`, der monteres ind i containeren og eksekveres af PostgreSQL ved første opstart.
+
+### 4.6 Opstartsrækkefølge og afhængigheder
+
+Docker Compose håndterer containerafhængigheder via `depends_on` kombineret med healthchecks, så containerne starter i korrekt rækkefølge:
 
 ```
-[Browser / React SPA]
-         |
-         | HTTPS (nginx reverse proxy + Let's Encrypt SSL)
-         |
-[Node.js / Express REST API]
-         |
-         | TCP/5432
-         |
-[PostgreSQL database]
+db (postgres klar) → backend (API klar) → frontend (startet) → nginx (klar)
 ```
 
-Alle tre lag kører i Docker-containere og orkestreres med Docker Compose. I produktion sker al kommunikation fra brugeren over HTTPS via en nginx reverse proxy, som videresender API-kald til backend-containeren og serverer den statiske React-applikation direkte.
+Dette forhindrer fejl hvor f.eks. backend forsøger at forespørge databasen, inden PostgreSQL er fuldt initialiseret.
 
-### Figur 1: Komponentdiagram — [Indsæt diagram her]
+### 4.7 Teknologistack og begrundelse
 
-*(Anbefaling: Lav et simpelt diagram i draw.io med fire bokse: Browser → nginx → Express API → PostgreSQL, med Docker Compose som "kasse" rundt om de tre servere)*
-
-### Teknologistack
-
-| Komponent        | Teknologi                  | Begrundelse                                        |
-|------------------|----------------------------|----------------------------------------------------|
-| Frontend         | React 18                   | Komponentbaseret, stor community, hurtig UI        |
-| Backend          | Node.js + Express          | Let at sætte op, velegnet til REST APIs            |
-| Database         | PostgreSQL                 | Robust, ACID-kompatibel, fremragende JSON-support  |
-| Web server       | nginx                      | Høj ydeevne, velegnet som reverse proxy            |
-| Containerisering | Docker + Docker Compose    | Reproducerbare miljøer, nem deployment             |
-| CI/CD            | GitHub Actions             | Integreret i GitHub, gratis for offentlige repos   |
-| E-mail           | Resend API                 | Moderne e-mail-API med simpel integration          |
-| Kalender         | Google Calendar API v3     | Bred adoption, veldokumenteret API                 |
+| Komponent        | Teknologi                | Begrundelse                                                                 |
+|------------------|--------------------------|-----------------------------------------------------------------------------|
+| Frontend         | React 18                 | Komponentbaseret arkitektur, stor community, velegnet til dynamiske UI'er   |
+| Backend          | Node.js + Express        | Asynkron I/O passer godt til en API-server med mange samtidige forespørgsler|
+| Database         | PostgreSQL 15            | ACID-kompatibel, understøtter JSONB (audit log), stærk relationel model     |
+| Web server       | nginx                    | Høj ydeevne som reverse proxy, simpel konfiguration af routing og SSL       |
+| Containerisering | Docker + Docker Compose  | Garanterer ens miljø fra udvikling til produktion, nem skalering            |
+| CI/CD            | GitHub Actions           | Tæt integreret med GitHub, gratis, veldokumenteret                          |
+| SSL              | Let's Encrypt + Certbot  | Gratis, automatisk fornyelse, industri-standard                             |
+| E-mail           | Resend API               | Moderne transaktionel e-mail-API, generøst gratis niveau                    |
+| Kalender         | Google Calendar API v3   | Bred adoption, stabil API, god dokumentation                                |
 
 ---
 
 ## 5. Databasedesign
 
-Databasen er designet i PostgreSQL og initialiseres via `init.sql` ved første opstart. Der er fire primære tabeller.
+### 5.1 Valg af databasesystem
 
-### Figur 2: ER-diagram — [Indsæt ER-diagram her]
+Systemet bruger **PostgreSQL 15** som database. PostgreSQL er en **relationsdatabase**, hvilket vil sige at data er organiseret i tabeller med rækker og kolonner — tænk på det som flere regneark der kan snakke sammen. Det der adskiller en relationsdatabase fra f.eks. en simpel fil eller et regneark er, at tabeller kan kobles sammen via **fremmednøgler**. En fremmednøgle er en kolonne i én tabel, der peger på en række i en anden tabel — på den måde kan man hente oplysninger fra begge tabeller på én gang uden at gemme de samme data to steder.
 
-*(Anbefaling: Lav ER-diagram med draw.io eller dbdiagram.io med tabellerne customers, appointments, services og audit_logs og relationerne imellem dem)*
+PostgreSQL er valgt frem for alternativer som MySQL af to konkrete grunde. For det første understøtter det **JSONB-kolonner**, som er en måde at gemme fleksibelt struktureret data (i JSON-format) direkte i databasen. Det bruges i audit-loggen, hvor hver handling kan have et forskelligt sæt oplysninger. For det andet er PostgreSQL fuldt **ACID-kompatibelt**. ACID er et sæt garantier der sikrer at databasen altid er i en konsistent tilstand — kort sagt: en handling enten gennemføres helt eller slet ikke. I et bookingsystem er det vigtigt, fordi en halvt gennemført booking — der f.eks. er gemt i én tabel men ikke en anden — ville skabe forvirring for både kunde og salon.
 
-### Tabel 3: Tabelbeskrivelse
+### 5.2 Tabeller og struktur
 
-| Tabel          | Formål                                                              |
-|----------------|---------------------------------------------------------------------|
-| `services`     | Indeholder salonens ydelser (navn, varighed, pris)                  |
-| `customers`    | Kundernes kontooplysninger inkl. hashed adgangskode og verif.-token |
-| `appointments` | Bookinger med reference til kunde, ydelse, dato og tidslot          |
-| `audit_logs`   | Logning af vigtige hændelser (oprettelse, login, ændringer)         |
+Databasen består af fire tabeller. De oprettes automatisk første gang systemet starter, via filen `init.sql`, som PostgreSQL kører som en del af sin opstartsrutine.
 
-Relationen mellem `appointments` og `services` er en mange-til-en-relation (mange bookinger kan have samme ydelse). `audit_logs` har en optional foreign key til `customers`, der sættes til NULL ved sletning (`ON DELETE SET NULL`), så audit-historikken bevares selvom en konto slettes.
+### Figur 2: ER-diagram
 
-Databasen er indekseret på de hyppigst forespurgte kolonner for at sikre god ydeevne:
+```mermaid
+erDiagram
+    services {
+        SERIAL      id          PK
+        VARCHAR     name
+        TEXT        description
+        INTEGER     duration
+        DECIMAL     price
+        TIMESTAMP   created_at
+    }
+
+    customers {
+        SERIAL      id              PK
+        VARCHAR     full_name
+        VARCHAR     email
+        VARCHAR     phone
+        VARCHAR     password_hash
+        BOOLEAN     is_verified
+        VARCHAR     verification_token
+        TIMESTAMP   created_at
+    }
+
+    appointments {
+        SERIAL      id                   PK
+        VARCHAR     name
+        VARCHAR     email
+        VARCHAR     phone
+        INTEGER     service_id           FK
+        DATE        appointment_date
+        VARCHAR     time_slot
+        VARCHAR     status
+        VARCHAR     google_event_id
+        VARCHAR     google_sync_status
+        TIMESTAMP   google_last_synced_at
+        TEXT        google_sync_error
+        TIMESTAMP   created_at
+    }
+
+    audit_logs {
+        SERIAL      id           PK
+        INTEGER     user_id      FK
+        VARCHAR     action
+        VARCHAR     entity_type
+        VARCHAR     entity_id
+        JSONB       old_value
+        JSONB       new_value
+        VARCHAR     ip_address
+        TIMESTAMP   created_at
+    }
+
+    services    ||--o{ appointments : "bookes som"
+    customers   ||--o{ audit_logs   : "genererer"
+```
+
+*(Diagrammet kan eksporteres som billede via [mermaid.live](https://mermaid.live) og indsættes i Word)*
+
+Diagrammet viser de fire tabeller og pilene imellem dem. En pil fra én tabel til en anden betyder at der er et direkte link — en fremmednøgle — så man kan slå data op på tværs af begge tabeller i én forespørgsel.
+
+### 5.3 Gennemgang af de fire tabeller
+
+**`services` — Ydelser**
+
+Denne tabel er salonens prisliste i databaseform. Den indeholder de seks ydelser med navn, beskrivelse, varighed i minutter og pris i kroner. Tabellen udfyldes automatisk ved opstart via `init.sql` og ændres ikke af kunder under brug — den fungerer udelukkende som et opslagsværktøj. Det giver mening at have priser og varighed i databasen frem for skrevet direkte i koden, fordi de så nemt kan opdateres ét sted uden at røre ved selve programmet.
 
 ```sql
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at  ON audit_logs(created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_entity       ON audit_logs(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id      ON audit_logs(user_id);
+CREATE TABLE IF NOT EXISTS services (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(255) NOT NULL,
+    description TEXT,
+    duration    INTEGER NOT NULL,   -- i minutter
+    price       DECIMAL(10, 2) NOT NULL,
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 ```
+
+`SERIAL PRIMARY KEY` betyder at databasen automatisk tildeler hvert ydelse et unikt ID-nummer, der tæller opad fra 1. Det ID bruges, når en booking skal kobles til en bestemt ydelse.
+
+**`customers` — Kundernes konti**
+
+Her gemmes alle registrerede kunder. Den vigtigste kolonne er `password_hash` — adgangskoden gemmes **aldrig i klartekst**. Når en kunde opretter konto, omdannes adgangskoden med en algoritme kaldet **bcrypt**, der laver en uigenkendelig streng ud af den. Den streng er det eneste der gemmes. Selv hvis databasen faldt i de forkerte hænder, ville angriberen ikke kunne læse de originale adgangskoder.
+
+`is_verified` og `verification_token` styrer e-mailbekræftelsesflowet. Nye kunder starter med `is_verified = false` og får tilsendt en tilfældig kode. Koden gemmes midlertidigt i `verification_token`. Når kunden indtaster den korrekte kode, sættes `is_verified = true` og koden slettes fra databasen. Kunden kan ikke booke tider så længe `is_verified` er `false`.
+
+`email` har begrænsningen `UNIQUE`, som betyder at databasen selv afviser forsøg på at registrere to konti med samme e-mailadresse — det er altså en regel der håndhæves direkte i databasen og ikke kun i applikationskoden.
+
+```sql
+CREATE TABLE IF NOT EXISTS customers (
+    id                 SERIAL PRIMARY KEY,
+    full_name          VARCHAR(255) NOT NULL,
+    email              VARCHAR(255) NOT NULL UNIQUE,
+    phone              VARCHAR(50) NOT NULL,
+    password_hash      VARCHAR(255) NOT NULL,
+    is_verified        BOOLEAN NOT NULL DEFAULT FALSE,
+    verification_token VARCHAR(64),
+    created_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**`appointments` — Bookinger**
+
+Dette er den centrale tabel i systemet — det er her selve bookingerne lever. Kolonnen `service_id` er en **fremmednøgle**, der peger på en ydelse i `services`-tabellen. Det betyder at man ikke kan oprette en booking med en ydelse der ikke eksisterer — databasen afviser det automatisk.
+
+Kundens navn, e-mail og telefon gemmes direkte på bookingen frem for kun at referere til `customers`-tabellen. Det er et bevidst valg: hvis en kundekonto slettes på et tidspunkt, skal salonens bookinghistorik stadig give mening. Uden disse kolonner på selve bookingen ville gamle bookinger miste alle oplysninger om hvem der bestilte.
+
+`status` kan kun være `'confirmed'` eller `'cancelled'`. Bookinger slettes aldrig fra databasen — de annulleres. Det sikrer at der altid er en fuld historik over hvad der er sket.
+
+De fire Google-kolonner (`google_event_id`, `google_sync_status`, `google_last_synced_at`, `google_sync_error`) bruges til at holde styr på om bookingen er synkroniseret til Google Kalender. `google_sync_status` viser om synkroniseringen lykkedes, afventer, fejlede eller er deaktiveret — det gør det muligt at se præcist hvad der gik galt, hvis en synkronisering ikke gennemføres.
+
+**`audit_logs` — Hændelseslog**
+
+Audit-loggen er systemets løbende dagbog. Hver gang noget vigtigt sker i systemet — en konto oprettes, nogen logger ind, en booking ændres — skrives en ny række i denne tabel med tidsstempel, bruger-ID og IP-adresse.
+
+Kolonnerne `old_value` og `new_value` er af typen **JSONB**, som er databasens måde at gemme fleksibelt struktureret data på. De gemmer et snapshot af situationen *før* og *efter* en ændring. Hvis en admin f.eks. ændrer en bookings status fra `confirmed` til `cancelled`, gemmes begge værdier, så man altid kan se hvad der skete. JSONB er valgt frem for faste kolonner fordi en login-hændelse og en bookingændring har helt forskellige oplysninger — med JSONB kan begge typer gemmes i samme tabel.
+
+`user_id` er en fremmednøgle til `customers`, men med en særlig regel: `ON DELETE SET NULL`. Det betyder at hvis en kundekonto slettes, forsvinder log-rækkerne ikke med den — bruger-ID'et sættes blot til tomt (`NULL`). Hændelserne er stadig der med tidsstempel og IP-adresse, man ved bare ikke længere hvem brugeren var.
+
+```sql
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id          SERIAL PRIMARY KEY,
+    user_id     INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL,
+    action      VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(100) NOT NULL,
+    entity_id   VARCHAR(255),
+    old_value   JSONB,
+    new_value   JSONB,
+    ip_address  VARCHAR(45),
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 5.4 Hvordan tabellerne hænger sammen
+
+De to **fremmednøgler** i databasen skaber forbindelsen mellem tabellerne:
+
+- `appointments.service_id` peger på `services.id`. Det vil sige: en booking har altid en tilknyttet ydelse, og den ydelse skal findes i `services`-tabellen. Man kan altså ikke ved et uheld oprette en booking med en ydelse der ikke eksisterer — databasen stopper det.
+- `audit_logs.user_id` peger på `customers.id`, men må gerne være tom. Det er fordi ikke alle log-hændelser nødvendigvis har en bruger tilknyttet, og fordi sletning af en kundekonto ikke må fjerne loghistorikken.
+
+Begge relationer er af typen **mange-til-en**: mange bookinger kan referere til den samme ydelse, og én kunde kan have mange rækker i audit-loggen.
+
+### 5.5 Indeksering og søgehastighed
+
+Når databasen skal finde bestemte rækker i en stor tabel, skal den som udgangspunkt kigge alle rækker igennem én for én — ligesom at lede efter et navn i en telefonbog uden alfabetisk orden. Et **indeks** løser det: databasen bygger en sorteret oversigt over en bestemt kolonne, så den hurtigt kan hoppe direkte til de relevante rækker.
+
+`audit_logs` er den eneste tabel der vokser løbende og vil over tid have mange tusinde rækker, så det er her indekser giver mest mening. Der er oprettet tre:
+
+```sql
+-- Gør det hurtigt at hente de seneste hændelser sorteret efter tidspunkt
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at
+    ON audit_logs(created_at);
+
+-- Gør det hurtigt at finde alle hændelser knyttet til f.eks. booking #42
+CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
+    ON audit_logs(entity_type, entity_id);
+
+-- Gør det hurtigt at finde alle hændelser knyttet til en bestemt bruger
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id
+    ON audit_logs(user_id);
+```
+
+De øvrige tabeller har kun det indeks der automatisk oprettes på primærnøglen (`id`), da de er relativt små og ikke forespørges i samme omfang.
 
 ---
 
