@@ -1,12 +1,28 @@
+/*
+ * AdminDashboard.js — Admin-oversigten (kun for salonens administrator).
+ *
+ * HVAD FILEN GØR:
+ * Viser alle bookinger, systemstatus (database + backup-VM) og backup-status, og lader
+ * admin annullere bookinger. Henter data fra /api/admin/*-ruterne, som backend kun giver
+ * adgang til, hvis JWT-tokenet tilhører admin.
+ *
+ * BEMÆRK: Tjekket currentUser.isAdmin her er kun for brugeroplevelsen. Den rigtige
+ * sikkerhed ligger i backend (requireAdmin), som afviser uautoriserede kald med 403.
+ *
+ * Kaldes fra App.js, når en admin er på ruten /admin.
+ */
+
 import React, { useCallback, useEffect, useState } from 'react';
 import './AdminDashboard.css';
 
+// Oversætter bookingstatus til dansk visningstekst.
 function statusLabelDa(status) {
   if (status === 'confirmed') return 'Bekræftet';
   if (status === 'cancelled') return 'Annulleret';
   return status;
 }
 
+// Oversætter Google Kalender-synkroniseringsstatus til dansk visningstekst.
 function googleSyncLabelDa(status) {
   if (status === 'synced') return 'Synket';
   if (status === 'pending') return 'Afventer';
@@ -73,12 +89,13 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
       return;
     }
 
+    // Henter alle bookinger til tabellen. 401/403 betyder "ingen adgang" (ikke admin).
     const fetchAppointments = async () => {
       try {
         setLoading(true);
         setError(null);
         const response = await fetch(`${apiUrl}/api/admin/appointments`, {
-          credentials: 'include',
+          credentials: 'include',   // Sender admin-cookien med
         });
 
         if (response.status === 401 || response.status === 403) {
@@ -138,6 +155,8 @@ const AdminDashboard = ({ apiUrl, currentUser, onRequireAuth }) => {
     if (currentUser && currentUser.isAdmin) fetchBackupStatus();
   }, [currentUser, fetchBackupStatus]);
 
+  // Opdaterer en bookings status (bruges til at annullere). Sender PATCH til backend og
+  // erstatter bookingen i listen med det opdaterede svar, så tabellen straks viser ændringen.
   const setAppointmentStatus = async (appointmentId, status) => {
     if (!currentUser || !currentUser.isAdmin) return;
     setCancellingId(appointmentId);

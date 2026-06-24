@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
-set -uo pipefail
+# ============================================================================
+# backup.sh — Automatisk databasebackup (kører på produktions-VM'en via cron).
+#
+# HVAD FILEN GØR:
+# Tager en komprimeret dump af PostgreSQL-databasen og overfører den sikkert til en
+# separat backup-VM med scp. Hvert trin logges som JSON til combined.log/error.log,
+# som admin-dashboardet læser for at vise backup-status.
+#
+# HVORFOR: Koden kan altid genskabes fra GitHub, men kundedata og bookinger findes kun
+# i databasen. Derfor er databasebackup det vigtigste driftspunkt.
+# ============================================================================
+set -uo pipefail   # Stop ved brug af udefinerede variabler; fang fejl i pipes
 
+# --- Indstillinger: container, databasenavn/bruger og hvor backuppen sendes hen ---
 CONTAINER_NAME="salon_db"
 DB_NAME="salon_db"
 DB_USER="salon_user"
@@ -13,6 +25,8 @@ BACKUP_FILE="/tmp/${DB_NAME}_$(date +%Y%m%d_%H%M%S).sql.gz"
 
 mkdir -p "$LOG_DIR"
 
+# Skriver én struktureret JSON-loglinje (samme format som backend bruger).
+# Fejl-niveau skrives også til error.log.
 log_message() {
   local level="$1"
   local message="$2"
@@ -63,6 +77,7 @@ log_message "info" "PostgreSQL backup started" \
   "database=${DB_NAME}" \
   "backupFile=${BACKUP_FILE}"
 
+# Trin 1: Lav en komprimeret database-dump. Fejler det, ryddes op og scriptet stopper.
 if ! docker exec "$CONTAINER_NAME" pg_dump -U "$DB_USER" "$DB_NAME" | gzip > "$BACKUP_FILE"; then
   log_message "error" "PostgreSQL backup dump failed" \
     "container=${CONTAINER_NAME}" \
@@ -80,6 +95,7 @@ log_message "info" "PostgreSQL backup transfer started" \
   "backupFile=${BACKUP_FILE}" \
   "remoteDest=${REMOTE_DEST}"
 
+# Trin 2: Overfør dumpen til backup-VM'en. Lykkes det, slettes den midlertidige lokale fil.
 if scp "$BACKUP_FILE" "$REMOTE_DEST"; then
   log_message "info" "PostgreSQL backup transfer completed" \
     "backupFile=${BACKUP_FILE}" \

@@ -1,13 +1,28 @@
+/*
+ * App.js — Rodkomponenten for hele frontend.
+ *
+ * HVAD FILEN GØR:
+ * Styrer hele brugerfladen og dens tilstand (state): hvilke ydelser der vises, om en
+ * bruger er logget ind, login/opret-vinduet, e-mailbekræftelse og hvilken "side" der vises
+ * (forside, om-os eller /admin).
+ *
+ * DATAFLOW: Alle data hentes fra backend-API'et med fetch/axios mod stier under /api.
+ * App henter ydelser, gendanner login via /api/me og sender login/registrering afsted.
+ * Selve bookingen og admin-oversigten er lagt ud i underkomponenter (BookingForm, AdminDashboard).
+ */
+
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import ServiceCard from './components/ServiceCard';
-import BookingForm from './components/BookingForm';
-import Header from './components/Header';
-import AdminDashboard from './components/AdminDashboard';
-import VerifyEmailModal from './components/VerifyEmailModal';
+import ServiceCard from './components/ServiceCard';        // Kort for én ydelse
+import BookingForm from './components/BookingForm';         // Selve bookingformularen
+import Header from './components/Header';                   // Topmenu/navigation
+import AdminDashboard from './components/AdminDashboard';   // Admin-oversigt (kun admin)
+import VerifyEmailModal from './components/VerifyEmailModal'; // Popup til e-mailbekræftelse
 
+// Base-URL til API'et. Tom streng betyder "samme domæne" (nginx sender /api videre til backend).
 const API_URL = process.env.REACT_APP_API_URL || '';
 
+// Oversætter et svar fra /api/me eller login til det brugerobjekt, appen bruger internt.
 function mapMeResponse(data) {
   if (!data) return null;
   return {
@@ -20,6 +35,7 @@ function mapMeResponse(data) {
   };
 }
 
+// "Om os"-siden (vises på ruten /om-os). Ren visning uden data fra backend.
 function AboutPage() {
   const openingHours = [
     { day: 'Mandag - Fredag', hours: '09:00 - 18:00' },
@@ -65,24 +81,26 @@ function AboutPage() {
 }
 
 function App() {
-  const [services, setServices] = useState([]);
-  const [selectedService, setSelectedService] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [showAuth, setShowAuth] = useState(false);
-  const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
-  const [authForm, setAuthForm] = useState({
+  // --- Tilstand (state): React gentegner UI'et automatisk, når disse ændres ---
+  const [services, setServices] = useState([]);              // Liste af ydelser fra API'et
+  const [selectedService, setSelectedService] = useState(null); // Den ydelse der bookes lige nu
+  const [loading, setLoading] = useState(true);              // Viser spinner mens ydelser hentes
+  const [error, setError] = useState(null);                  // Fejl ved hentning af ydelser
+  const [showAuth, setShowAuth] = useState(false);           // Er login/opret-vinduet åbent?
+  const [authMode, setAuthMode] = useState('login');         // 'login' eller 'signup'
+  const [authForm, setAuthForm] = useState({                 // Felterne i login/opret-formularen
     name: '',
     email: '',
     phone: '',
     password: '',
   });
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authError, setAuthError] = useState(null);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [showVerifyEmail, setShowVerifyEmail] = useState(false);
-  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);      // Den indloggede bruger (null = gæst)
+  const [authError, setAuthError] = useState(null);          // Fejlbesked i login/opret
+  const [authChecked, setAuthChecked] = useState(false);     // Er sessionstjek (/api/me) færdigt?
+  const [showVerifyEmail, setShowVerifyEmail] = useState(false); // Er e-mail-bekræftelses-popup åben?
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState(''); // E-mail der afventer bekræftelse
 
+  // Hent ydelser én gang, når appen indlæses.
   useEffect(() => {
     fetchServices();
   }, []);
@@ -99,7 +117,8 @@ function App() {
     });
   }, [loading, selectedService]);
 
-  // Restore session from JWT cookie (for route guard and /admin)
+  // Gendan login ved sideindlæsning: spørg /api/me. Hvis JWT-cookien er gyldig, får vi
+  // brugeren tilbage og er stadig logget ind (selv efter genindlæsning eller lukket browser).
   useEffect(() => {
     fetch(`${API_URL}/api/me`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
@@ -110,6 +129,7 @@ function App() {
       .catch(() => setAuthChecked(true));
   }, []);
 
+  // Henter listen af ydelser fra backend og gemmer den i state.
   const fetchServices = async () => {
     try {
       setError(null);
@@ -124,17 +144,18 @@ function App() {
     }
   };
 
+  // Når en kunde vælger en ydelse: kræv login, kræv bekræftet e-mail, og åbn så bookingformularen.
   const handleServiceSelect = (service) => {
     if (!currentUser) {
-      openAuth('login');
+      openAuth('login');                 // Ikke logget ind -> åbn login
       return;
     }
     if (!currentUser.isVerified) {
       setPendingVerificationEmail(currentUser.email);
-      setShowVerifyEmail(true);
+      setShowVerifyEmail(true);          // Logget ind, men ikke bekræftet -> bed om kode
       return;
     }
-    setSelectedService(service);
+    setSelectedService(service);         // Klar til at booke -> vis formularen
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -151,6 +172,7 @@ function App() {
     }
   };
 
+  // Log ud: nulstil brugeren lokalt og bed backend om at slette auth-cookien.
   const handleLogout = () => {
     setCurrentUser(null);
     fetch(`${API_URL}/api/logout`, { method: 'POST', credentials: 'include' }).catch(() => {});
@@ -180,6 +202,8 @@ function App() {
     });
   };
 
+  // Sender login- eller opret-formularen til backend afhængig af authMode.
+  // Håndterer de tre udfald: skal bekræfte e-mail, fejl, eller logget ind.
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError(null);
@@ -231,6 +255,7 @@ function App() {
     }
   };
 
+  // Simpel routing ud fra URL'ens sti: /admin viser admin-siden, /om-os viser om-os, resten er forsiden.
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
   const isAdminRoute = currentPath === '/admin';
   const isAboutRoute = currentPath === '/om-os';

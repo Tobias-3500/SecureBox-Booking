@@ -1,3 +1,12 @@
+/*
+ * VerifyEmailModal.js — Popup til bekræftelse af e-mail.
+ *
+ * HVAD FILEN GØR:
+ * Viser et felt, hvor brugeren indtaster den kode, de har fået på mail. Koden sendes til
+ * /api/auth/verify. Lykkes det, er brugeren bekræftet og logget ind, og onVerified kaldes
+ * (App.js opdaterer så brugeren). Vises når en uverificeret konto forsøger at booke/logge ind.
+ */
+
 import React, { useState } from 'react';
 
 const VerifyEmailModal = ({ apiUrl, email, onClose, onVerified }) => {
@@ -5,6 +14,7 @@ const VerifyEmailModal = ({ apiUrl, email, onClose, onVerified }) => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Sender den indtastede kode til backend for at bekræfte kontoen.
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);

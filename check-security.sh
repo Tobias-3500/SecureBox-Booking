@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
+# ============================================================================
+# check-security.sh — Hurtigt sikkerhedsoverblik på serveren.
+#
+# HVAD FILEN GØR:
+# Et hjælpescript til drift, der samler status ét sted: om Fail2ban kører, hvilke
+# "jails" der er aktive, hvilke IP-adresser der er blokeret, samt de seneste linjer
+# fra backendens log. Bruges til hurtigt at se, om nogen er ved at angribe serveren.
+# ============================================================================
 set -euo pipefail
 
+# Sti til backendens log (kan overstyres med miljøvariablen BACKEND_LOG).
 BACKEND_LOG="${BACKEND_LOG:-$(pwd)/logs/combined.log}"
 
 echo "== Fail2Ban service =="

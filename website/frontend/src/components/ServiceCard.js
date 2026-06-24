@@ -1,6 +1,15 @@
+/*
+ * ServiceCard.js — Et kort der viser én ydelse på forsiden.
+ *
+ * HVAD FILEN GØR:
+ * Viser navn, beskrivelse, varighed og pris for en ydelse samt en "Book nu"-knap.
+ * Klik kalder onSelect (sendt fra App.js), som starter bookingflowet for netop denne ydelse.
+ */
+
 import React from 'react';
 import './ServiceCard.css';
 
+// Formaterer prisen som dansk valuta.
 function formatDkk(value) {
   return new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(Number(value));
 }

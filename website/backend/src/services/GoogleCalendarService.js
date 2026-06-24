@@ -1,7 +1,22 @@
+/*
+ * GoogleCalendarService.js — Integration til Google Kalender.
+ *
+ * HVAD FILEN GØR:
+ * Opretter og sletter kalender-events i salonens Google Kalender, når en booking
+ * oprettes eller annulleres. server.js kalder createEvent() og cancelEvent().
+ *
+ * DATAFLOW: server.js -> denne service -> Google Calendar API (over HTTPS).
+ *
+ * AUTENTIFIKATION: Bruger en Google "Service Account" (en maskinbruger) med en privat
+ * nøgle fra .env. Den har kun adgang til 'calendar.events' — det mindst mulige scope
+ * (principle of least privilege). Er integrationen slået fra, gør servicen ingenting.
+ */
+
 const { google } = require('googleapis');
 const logger = require('../config/logger');
 
 class GoogleCalendarService {
+  // Læser opsætningen fra env. Hvis integrationen er slået fra, oprettes ingen forbindelse.
   constructor({ env, auditService }) {
     this.enabled = env.GOOGLE_CALENDAR_ENABLED === 'true';
     this.calendarId = env.GOOGLE_CALENDAR_ID;
@@ -13,16 +28,20 @@ class GoogleCalendarService {
       return;
     }
 
+    // Den private nøgle gemmes i .env med \n som tekst; her laves de om til rigtige linjeskift.
     const privateKey = env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY.replace(/\\n/g, '\n');
     const auth = new google.auth.JWT({
       email: env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
       key: privateKey,
-      scopes: ['https://www.googleapis.com/auth/calendar.events'],
+      scopes: ['https://www.googleapis.com/auth/calendar.events'],  // Kun events — intet andet
     });
 
     this.calendar = google.calendar({ version: 'v3', auth });
   }
 
+  // Opretter et kalender-event for en booking. Returnerer event-id'et, der gemmes på
+  // bookingen, så eventet kan slettes igen ved annullering. Kaster fejl op til server.js,
+  // hvis Google fejler (server.js markerer så bookingen som 'failed', men beholder den).
   async createEvent({ appointment, service, userId = null, ipAddress = null }) {
     if (!this.enabled) {
       return { skipped: true, reason: 'disabled' };
@@ -78,6 +97,8 @@ class GoogleCalendarService {
     }
   }
 
+  // Sletter et tidligere oprettet kalender-event (når en booking annulleres).
+  // Hvis eventet allerede er væk i Google (404), behandles det som "ok, allerede slettet".
   async cancelEvent({ appointment, userId = null, ipAddress = null }) {
     if (!this.enabled) {
       return { skipped: true, reason: 'disabled' };
@@ -140,6 +161,8 @@ class GoogleCalendarService {
     }
   }
 
+  // Bygger selve event-objektet, som sendes til Google: titel, beskrivelse med kundeinfo,
+  // samt start- og sluttidspunkt (slut = start + ydelsens varighed i minutter).
   buildEvent({ appointment, service }) {
     const start = this.buildDateTime(appointment.appointment_date, appointment.time_slot);
     const duration = Number(service?.duration) || 30;
@@ -171,11 +194,13 @@ class GoogleCalendarService {
     };
   }
 
+  // Kombinerer en dato og et tidsslot (fx "14:30") til Googles dato-tid-format.
   buildDateTime(dateValue, timeSlot) {
     const date = dateValue instanceof Date ? dateValue.toISOString().slice(0, 10) : String(dateValue).slice(0, 10);
     return `${date}T${timeSlot}:00`;
   }
 
+  // Lægger et antal minutter til et tidspunkt — bruges til at beregne eventets sluttid.
   addMinutes(dateTime, minutesToAdd) {
     const [datePart, timePart] = dateTime.split('T');
     const [year, month, day] = datePart.split('-').map(Number);

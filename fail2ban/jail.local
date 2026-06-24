@@ -1,8 +1,24 @@
+# ============================================================================
+# jail.local — Fail2ban-konfiguration (netværksniveau-beskyttelse på VM'en).
+#
+# HVAD FILEN GØR:
+# Fail2ban overvåger logfiler og blokerer automatisk IP-adresser i firewallen, hvis de
+# laver for mange mislykkede forsøg. Det supplerer applikationens rate limiting med et
+# ekstra forsvarslag (defense in depth).
+#
+#   bantime  = hvor længe en IP blokeres
+#   findtime = tidsvindue fejl tælles indenfor
+#   maxretry = antal fejl før blokering
+# ============================================================================
+
+# Standardværdier der gælder for alle jails nedenfor, medmindre de overskrives.
 [DEFAULT]
 bantime = 1h
 findtime = 10m
 maxretry = 5
 backend = auto
+
+# Beskytter SSH-login mod brute force.
 
 [sshd]
 enabled = true
@@ -13,6 +29,7 @@ bantime = 1h
 findtime = 10m
 maxretry = 5
 
+# Blokerer IP'er der genererer mange 4xx-fejl mod nginx (fx scanning/brute force mod API'et).
 [nginx-4xx]
 enabled = true
 port = http,https

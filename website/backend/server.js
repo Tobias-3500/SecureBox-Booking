@@ -1,19 +1,42 @@
-const { env } = require('./src/config/env');
+/*
+ * server.js — Backend-API'et (applikationslaget) for Nordisk Hår bookingsystem.
+ *
+ * HVAD FILEN GØR:
+ * Dette er hele backendens hovedfil. Den starter en Express-webserver, der stiller
+ * et REST-API til rådighed på stier der starter med "/api". Frontend (React) taler
+ * KUN med denne fil via HTTP — aldrig direkte med databasen.
+ *
+ * DATAFLOW (hvor ting bliver sendt hen):
+ *   Browser (React)  ->  nginx (reverse proxy)  ->  dette API  ->  PostgreSQL-database
+ *                                                        |
+ *                                                        +--> Resend (sender verifikations-mails)
+ *                                                        +--> Google Calendar (opretter/sletter events)
+ *
+ * ANSVAR:
+ *   - Autentifikation (login, registrering, e-mailbekræftelse) med JWT i httpOnly cookie
+ *   - Adgangskontrol via middleware (requireAuth, requireAdmin, requireVerifiedCustomer)
+ *   - Booking-logik (tjek ledighed, opret booking, opdater status)
+ *   - Sikkerhed: bcrypt-hashning, parameteriserede SQL-queries, rate limiting, CORS
+ *   - Audit-logning af vigtige handlinger og synkronisering til Google Kalender
+ */
+
+// --- Tredjeparts-biblioteker og interne moduler der bruges i hele filen ---
+const { env } = require('./src/config/env'); // Validerede miljøvariabler (fejler ved opstart hvis noget mangler)
 const express = require('express');
-const cors = require('cors');
-const crypto = require('crypto');
-const { Pool } = require('pg');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
-const cookieParser = require('cookie-parser');
-const rateLimit = require('express-rate-limit');
-const { exec } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const { Resend } = require('resend');
-const logger = require('./src/config/logger');
-const { AuditService, getRequestIp } = require('./src/services/AuditService');
-const GoogleCalendarService = require('./src/services/GoogleCalendarService');
+const cors = require('cors');                       // Styrer hvilke domæner der må kalde API'et fra en browser
+const crypto = require('crypto');                   // Genererer tilfældige verifikationskoder
+const { Pool } = require('pg');                      // PostgreSQL-forbindelsespulje
+const bcrypt = require('bcryptjs');                 // Hasher adgangskoder (envejs, kan ikke vendes om)
+const jwt = require('jsonwebtoken');                // Laver og verificerer login-tokens (JWT)
+const cookieParser = require('cookie-parser');      // Læser cookies fra indkommende forespørgsler
+const rateLimit = require('express-rate-limit');    // Begrænser antal forespørgsler (brute force-beskyttelse)
+const { exec } = require('child_process');          // Kører systemkommandoer (ping til backup-VM)
+const fs = require('fs');                            // Læser filer fra disken (backup-logs)
+const path = require('path');                        // Bygger filstier på tværs af styresystemer
+const { Resend } = require('resend');               // Tredjepartstjeneste til at sende e-mails
+const logger = require('./src/config/logger');      // Struktureret logning (Winston)
+const { AuditService, getRequestIp } = require('./src/services/AuditService');   // Skriver audit-log til databasen
+const GoogleCalendarService = require('./src/services/GoogleCalendarService');   // Synkroniserer bookinger til Google Kalender
 
 const app = express();
 const PORT = env.BACKEND_PORT;
@@ -30,8 +53,11 @@ const BACKUP_LOG_FALLBACK_PATHS = [
   '/root/apps/logs/combined.log',
 ];
 
+// Backend kører bag nginx. 'trust proxy' gør, at vi kan læse klientens rigtige IP
+// fra X-Forwarded-For-headeren i stedet for nginx' interne IP.
 app.set('trust proxy', 1);
 
+// Generel rate limiter: maks 100 forespørgsler pr. IP hvert 15. minut på alle /api-ruter.
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 100,
@@ -40,6 +66,8 @@ const generalLimiter = rateLimit({
   message: { error: 'For mange forespørgsler. Prøv igen senere.' },
 });
 
+// Streng rate limiter til login/verifikation: kun 5 forsøg pr. IP i timen.
+// Dette er den primære beskyttelse mod brute force af adgangskoder.
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
@@ -48,13 +76,13 @@ const authLimiter = rateLimit({
   message: { error: 'For mange loginforsøg. Prøv igen senere.' },
 });
 
-// Middleware
+// --- Middleware: kører på alle forespørgsler, før de når de enkelte ruter ---
 app.use(cors({
-  origin: CORS_ORIGIN,
-  credentials: true,
+  origin: CORS_ORIGIN,   // Kun dette domæne må kalde API'et fra en browser
+  credentials: true,     // Tillad at cookies (JWT) sendes med på cross-origin kald
 }));
-app.use(cookieParser());
-app.use(express.json());
+app.use(cookieParser());  // Gør cookies tilgængelige som req.cookies
+app.use(express.json());  // Parser JSON i request-body til et JavaScript-objekt
 
 // Database connection configuration
 const dbConfig = {
@@ -75,11 +103,13 @@ logger.info('Admin email configured', {
   adminEmail: ADMIN_EMAIL ? `${ADMIN_EMAIL.substring(0, 5)}...` : '(none - set ADMIN_EMAIL in .env)',
 });
 
+// Opretter forbindelsespuljen til PostgreSQL og de hjælpe-services, der bruger den.
 const pool = new Pool(dbConfig);
 const auditService = new AuditService(pool);
 const googleCalendarService = new GoogleCalendarService({ env, auditService });
 
-// Ensure customers table exists (for auth) — matcher kolonner i init.sql
+// Sikrer at 'customers'-tabellen findes (bruges til login/registrering).
+// Køres ved opstart, så systemet også virker på en helt ny database. Matcher kolonner i init.sql.
 async function ensureCustomersTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS customers (
@@ -101,6 +131,8 @@ async function ensureCustomersTable() {
   `);
 }
 
+// Tilføjer kolonner til Google Kalender-synkronisering på 'appointments', hvis de mangler.
+// "ADD COLUMN IF NOT EXISTS" gør det sikkert at køre hver gang uden at ødelægge data.
 async function ensureAppointmentSyncColumns() {
   await pool.query(`
     ALTER TABLE appointments ADD COLUMN IF NOT EXISTS google_event_id VARCHAR(255);
@@ -116,7 +148,9 @@ async function ensureAppointmentSyncColumns() {
   `);
 }
 
-// Eksisterende kunder før e-mail-verifikation: ingen token => betragtes som allerede verificeret
+// Engangsoprydning ved opstart: gamle kunder oprettet før e-mailverifikation blev indført
+// (dem uden token) markeres som verificeret, så de stadig kan logge ind. Admin-kontoen
+// sættes altid til verificeret.
 async function migrateLegacyVerifiedCustomers() {
   await pool.query(`
     UPDATE customers
@@ -133,6 +167,8 @@ async function migrateLegacyVerifiedCustomers() {
   }
 }
 
+// Sender en verifikationskode til en ny brugers e-mail via Resend-tjenesten.
+// Hvis API-nøglen mangler (fx lokalt), logges koden i stedet for at sende mail.
 async function sendVerificationEmail(toEmail, code) {
   const subject = 'Bekræft din konto — Nordisk Hår';
   const html = `
@@ -164,7 +200,8 @@ async function sendVerificationEmail(toEmail, code) {
   }
 }
 
-// Test database connection with retry logic
+// Tester databaseforbindelsen ved opstart med op til 5 forsøg og 2 sekunders pause.
+// Det håndterer, at databasecontaineren kan være lidt langsommere til at blive klar end backend.
 async function testConnection() {
   let retries = 5;
   while (retries > 0) {
@@ -196,10 +233,14 @@ pool.on('error', (err) => {
   logger.error('Unexpected error on idle client', { error: err });
 });
 
+// Laver et signeret JWT med brugerens oplysninger og lægger det i en sikker cookie.
+// Kaldes efter vellykket login, registrering eller e-mailbekræftelse.
+// Bruger er admin, hvis deres e-mail matcher ADMIN_EMAIL fra .env.
 function signAndSetToken(res, user) {
   const isAdmin = ADMIN_EMAIL && user.email && user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
   const isVerified = !!user.is_verified;
 
+  // Indholdet (payload) i tokenet. Signeres med JWT_SECRET, så det ikke kan forfalskes.
   const payload = {
     id: user.id,
     name: user.full_name,
@@ -212,16 +253,22 @@ function signAndSetToken(res, user) {
     expiresIn: '7d',
   });
 
+  // Cookie-flagene er hele sikkerheden omkring tokenet:
+  //   httpOnly  -> JavaScript i browseren kan ikke læse den (beskytter mod XSS-tyveri)
+  //   secure    -> sendes kun over HTTPS (slås fra lokalt hvor der køres HTTP)
+  //   sameSite  -> 'lax' forhindrer at cookien sendes med fra fremmede sites (CSRF-beskyttelse)
   const useSecureCookie = CORS_ORIGIN.startsWith('https');
   res.cookie('auth_token', token, {
     httpOnly: true,
     secure: useSecureCookie,
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000, // Tokenet (og dermed login) udløber efter 7 dage
   });
 }
 
-// Simple middleware to read auth token if needed in future
+// Middleware: kræver at brugeren er logget ind.
+// Læser JWT fra cookien og verificerer signaturen. Er den ugyldig/udløbet -> 401.
+// Ved succes lægges brugerens data i req.user, så de næste funktioner kan bruge dem.
 function requireAuth(req, res, next) {
   const token = req.cookies?.auth_token;
   if (!token) {
@@ -237,6 +284,9 @@ function requireAuth(req, res, next) {
   }
 }
 
+// Middleware: kræver admin. Bruges efter requireAuth på alle /api/admin/*-ruter.
+// Dette er den RIGTIGE adgangskontrol — frontend skjuler kun knapperne, men her afvises
+// uautoriserede kald med 403, selv hvis nogen kalder API'et direkte.
 function requireAdmin(req, res, next) {
   if (!req.user || !req.user.isAdmin) {
     return res.status(403).json({ error: 'Kræver administratoradgang' });
@@ -244,6 +294,8 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Middleware: kræver at kundens e-mail er bekræftet. Slår op i databasen (ikke kun i tokenet),
+// så en uverificeret konto ikke kan booke. Returnerer 403 med koden NOT_VERIFIED hvis ikke.
 async function requireVerifiedCustomer(req, res, next) {
   try {
     const result = await pool.query(
@@ -267,16 +319,18 @@ async function requireVerifiedCustomer(req, res, next) {
 // All database queries use parameterized statements ($1, $2, …) to prevent SQL injection.
 // No user or request data is ever interpolated into SQL strings.
 
-// Routes
+// ============================ API-RUTER (ENDPOINTS) ============================
 
-// Health check
+// Health check: bruges af Docker healthcheck til at se om backend lever. Kræver ikke login.
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Fra dette punkt gælder den generelle rate limiter for alle /api-ruter.
 app.use('/api', generalLimiter);
 
-// Current user from JWT cookie (for session restore / route guard)
+// GET /api/me — henter den aktuelle bruger ud fra JWT-cookien.
+// Frontend kalder denne ved sideindlæsning for at gendanne login (session restore).
 app.get('/api/me', requireAuth, async (req, res) => {
   try {
     const result = await pool.query(
@@ -302,11 +356,15 @@ app.get('/api/me', requireAuth, async (req, res) => {
   }
 });
 
-// Auth: register new customer
+// POST /api/customers/register — opretter en ny kundekonto.
+// Flow: valider input -> tjek at e-mail er ledig -> hash adgangskode -> gem i DB ->
+//       send verifikationskode på mail (admin springer verifikation over).
 app.post('/api/customers/register', async (req, res) => {
   try {
     const { name, email, phone, password } = req.body;
 
+    // Strukturel validering: alle felter skal være udfyldt, e-mail skal ligne en e-mail,
+    // og adgangskoden skal være mindst 8 tegn. Sker i backend, da frontend kan omgås.
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ error: 'Alle felter skal udfyldes' });
     }
@@ -319,14 +377,17 @@ app.post('/api/customers/register', async (req, res) => {
 
     await ensureCustomersTable();
 
-    // Check if email already exists
+    // Forretningsvalidering: findes e-mailen allerede? ($1 = parameteriseret, sikkert mod SQL injection)
     const existing = await pool.query('SELECT id FROM customers WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(409).json({ error: 'Der findes allerede en konto med denne e-mail' });
     }
 
+    // Hash adgangskoden med bcrypt (cost factor 10). Kun hashet gemmes — aldrig klartekst.
     const passwordHash = await bcrypt.hash(password, 10);
 
+    // Admin-kontoen oprettes som allerede verificeret. Alle andre får en tilfældig
+    // 8-tegns kode (crypto.randomBytes), de skal indtaste for at bekræfte deres e-mail.
     const emailLc = email.trim().toLowerCase();
     const adminLc = ADMIN_EMAIL ? ADMIN_EMAIL.trim().toLowerCase() : '';
     const preVerified = adminLc && emailLc === adminLc;
@@ -404,7 +465,7 @@ app.post('/api/customers/register', async (req, res) => {
   }
 });
 
-// Auth: login existing customer
+// POST /api/login — logger en eksisterende kunde ind. authLimiter = maks 5 forsøg/time.
 app.post('/api/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -414,21 +475,26 @@ app.post('/api/login', authLimiter, async (req, res) => {
 
     await ensureCustomersTable();
 
+    // Find brugeren (case-insensitivt via lower()). $1 sendes separat -> ingen SQL injection.
     const result = await pool.query(
       'SELECT id, full_name, email, phone, password_hash, is_verified FROM customers WHERE lower(email) = lower($1)',
       [email]
     );
     const user = result.rows[0];
 
+    // Bemærk: samme fejlbesked om brugeren ikke findes ELLER koden er forkert.
+    // Det forhindrer en angriber i at gætte, hvilke e-mails der har en konto.
     if (!user) {
       return res.status(401).json({ error: 'Forkert e-mail eller adgangskode' });
     }
 
+    // Sammenlign indtastet kode med det gemte bcrypt-hash (kan ikke vendes om).
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) {
       return res.status(401).json({ error: 'Forkert e-mail eller adgangskode' });
     }
 
+    // Uverificerede konti må ikke logge ind — frontend beder dem så om at indtaste koden.
     if (!user.is_verified) {
       return res.status(403).json({
         error: 'Bekræft din e-mail før du kan logge ind. Tjek din indbakke for koden.',
@@ -463,7 +529,8 @@ app.post('/api/login', authLimiter, async (req, res) => {
   }
 });
 
-// Bekræft e-mail med kode fra Resend-mail
+// POST /api/auth/verify — bekræfter en konto med koden fra verifikationsmailen.
+// Sætter is_verified = true og udsteder et login-token, så brugeren er logget ind med det samme.
 app.post('/api/auth/verify', authLimiter, async (req, res) => {
   try {
     const { email, code } = req.body;
@@ -523,7 +590,7 @@ app.post('/api/auth/verify', authLimiter, async (req, res) => {
   }
 });
 
-// Logout: clear auth cookie
+// POST /api/logout — logger ud ved at slette auth-cookien i browseren.
 app.post('/api/logout', (req, res) => {
   const useSecureCookie = CORS_ORIGIN.startsWith('https');
   res.clearCookie('auth_token', {
@@ -534,7 +601,7 @@ app.post('/api/logout', (req, res) => {
   res.status(204).send();
 });
 
-// Get all services
+// GET /api/services — henter listen af ydelser (klipning, farvning osv.). Offentlig.
 app.get('/api/services', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM services ORDER BY id');
@@ -545,7 +612,8 @@ app.get('/api/services', async (req, res) => {
   }
 });
 
-// Get available time slots for a date
+// GET /api/availability/:date — returnerer de tidspunkter, der ALLEREDE er booket på en dato.
+// Frontend bruger listen til at gråmarkere/skjule optagede tider i bookingformularen.
 app.get('/api/availability/:date', async (req, res) => {
   try {
     const { date } = req.params;
@@ -562,7 +630,10 @@ app.get('/api/availability/:date', async (req, res) => {
   }
 });
 
-// Create a new appointment (kræver verificeret, logget ind kunde)
+// POST /api/appointments — opretter en booking. Middleware-kæden sikrer, at brugeren
+// både er logget ind (requireAuth) OG har bekræftet sin e-mail (requireVerifiedCustomer).
+// Flow: tjek input -> hent kundedata -> tjek at tiden er fri -> gem booking ->
+//       skriv audit-log -> forsøg at oprette event i Google Kalender.
 app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, res) => {
   try {
     const { service_id, appointment_date, time_slot } = req.body;
@@ -580,6 +651,8 @@ app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, 
     }
     const { full_name: name, email, phone } = cust.rows[0];
 
+    // Dobbeltbooking-tjek: er der allerede en bekræftet booking på samme dato og tid?
+    // Returnerer 409 Conflict, så to kunder ikke kan tage samme tidsslot.
     const existingAppointment = await pool.query(
       `SELECT id FROM appointments 
        WHERE appointment_date = $1 AND time_slot = $2 AND status = 'confirmed'`,
@@ -625,6 +698,9 @@ app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, 
       ipAddress: getRequestIp(req),
     });
 
+    // Synkronisering til Google Kalender. Bevidst pakket i try/catch: hvis Google fejler,
+    // forbliver bookingen gemt i databasen, og status sættes blot til 'failed'.
+    // En ekstern tjeneste må aldrig kunne vælte kernefunktionen (at gemme bookingen).
     try {
       const syncResult = await googleCalendarService.createEvent({
         appointment,
@@ -665,7 +741,8 @@ app.post('/api/appointments', requireAuth, requireVerifiedCustomer, async (req, 
   }
 });
 
-// Get all appointments (admin-only view)
+// GET /api/admin/appointments — henter ALLE bookinger til admin-dashboardet.
+// JOIN henter også ydelsens navn, varighed og pris. Kun admin (requireAuth + requireAdmin).
 app.get('/api/admin/appointments', requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = await pool.query(
@@ -681,7 +758,9 @@ app.get('/api/admin/appointments', requireAuth, requireAdmin, async (req, res) =
   }
 });
 
-// Update appointment status (admin-only; e.g. set to cancelled, not deleted)
+// PATCH /api/admin/appointments/:id — opdaterer en bookings status (kun admin).
+// Bookinger slettes aldrig fra databasen; de sættes til 'cancelled'. Ved annullering
+// fjernes det tilhørende event også fra Google Kalender.
 app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -764,7 +843,8 @@ app.patch('/api/admin/appointments/:id', requireAuth, requireAdmin, async (req, 
   }
 });
 
-// System status (admin-only). The frontend displays Docker health and backup VM connectivity.
+// GET /api/admin/system-status — viser driftstatus i admin-dashboardet:
+// om databasen svarer, og om backup-VM'en kan nås (via ping). Kun admin.
 app.get('/api/admin/system-status', requireAuth, requireAdmin, async (req, res) => {
   const containers = [
     { name: 'salon_backend', healthy: true, status: 'healthy' },
@@ -794,6 +874,9 @@ app.get('/api/admin/system-status', requireAuth, requireAdmin, async (req, res) 
   });
 });
 
+// --- Hjælpefunktioner til backup-status (læser logfilen fra backup-scriptet) ---
+
+// Parser én linje fra backup-loggen. Linjerne er JSON; fejler parsing, behandles linjen som ren tekst.
 function parseBackupLogLine(line) {
   try {
     return JSON.parse(line);
@@ -806,6 +889,8 @@ function parseBackupLogLine(line) {
   }
 }
 
+// Finder den seneste backup-status (success/failed) i loggen og laver et kort resumé,
+// som admin-dashboardet viser ("Database er sikkerhedskopieret" eller fejl).
 function buildBackupSummary(logData, logPath) {
   const entries = logData
     .split(/\r?\n/)
@@ -836,6 +921,8 @@ function buildBackupSummary(logData, logPath) {
   };
 }
 
+// Forsøger at læse backup-logfilen fra flere mulige stier (forskellige i prod og lokalt).
+// Returnerer den første sti, der findes; ellers en tom log.
 function readBackupLog() {
   const logPaths = [BACKUP_LOG_PATH, ...BACKUP_LOG_FALLBACK_PATHS]
     .filter(Boolean)
@@ -861,7 +948,7 @@ function readBackupLog() {
   };
 }
 
-// Get backup log (admin-only)
+// GET /api/admin/backup/logs — returnerer backup-loggen og et statusresumé til dashboardet. Kun admin.
 app.get('/api/admin/backup/logs', requireAuth, requireAdmin, (req, res) => {
   try {
     const { logPath, log } = readBackupLog();
@@ -876,7 +963,9 @@ app.get('/api/admin/backup/logs', requireAuth, requireAdmin, (req, res) => {
   }
 });
 
-// Start server after database connection is established
+// --- Opstart ---
+// Serveren starter FØRST når databaseforbindelsen er bekræftet. Derefter sikres at alle
+// tabeller findes, gamle data migreres, og til sidst begynder Express at lytte på porten.
 testConnection().then(async () => {
   await ensureCustomersTable();
   await ensureAppointmentSyncColumns();

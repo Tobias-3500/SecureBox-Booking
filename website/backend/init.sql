@@ -1,4 +1,19 @@
--- Create services table
+-- ============================================================================
+-- init.sql — Opretter databasens struktur (datalaget).
+--
+-- HVAD FILEN GØR:
+-- Køres AUTOMATISK af PostgreSQL-containeren første gang databasen startes (lægges i
+-- /docker-entrypoint-initdb.d via docker-compose). Den opretter de fire tabeller, som
+-- hele systemet bygger på, og indsætter salonens standardydelser.
+--
+-- TABELLER:
+--   services      -> de ydelser der kan bookes (klipning, farvning osv.)
+--   appointments  -> selve bookingerne
+--   customers     -> brugerkonti (login) med hashet adgangskode
+--   audit_logs    -> historik over vigtige handlinger
+-- ============================================================================
+
+-- Ydelser der kan bookes. Indlæses med standarddata længere nede.
 CREATE TABLE IF NOT EXISTS services (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -8,7 +23,9 @@ CREATE TABLE IF NOT EXISTS services (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create appointments table
+-- Bookinger. Kundens kontaktinfo gemmes direkte på bookingen (ikke kun som reference),
+-- så historikken bevares selv hvis en konto slettes. google_*-kolonnerne styrer
+-- synkroniseringen til Google Kalender. Bookinger slettes ikke; status sættes til 'cancelled'.
 CREATE TABLE IF NOT EXISTS appointments (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
@@ -25,7 +42,7 @@ CREATE TABLE IF NOT EXISTS appointments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Insert default services (Danish names, prices in DKK; all >= 100)
+-- Standardydelser der vises på forsiden. Pris i DKK, varighed i minutter.
 INSERT INTO services (name, description, duration, price) VALUES
 ('Klipning', 'Professionel klipning med styling', 30, 250.00),
 ('Klipning og vask', 'Klipning med vask og styling', 45, 350.00),
@@ -46,7 +63,8 @@ CREATE TABLE IF NOT EXISTS customers (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Audit logs for important account, booking and admin actions.
+-- Audit-log: sporbarhed over vigtige konto-, booking- og admin-handlinger.
+-- old_value/new_value gemmes som JSONB (fleksibelt JSON), så før/efter kan registreres.
 CREATE TABLE IF NOT EXISTS audit_logs (
     id SERIAL PRIMARY KEY,
     user_id INTEGER NULL REFERENCES customers(id) ON DELETE SET NULL,
@@ -59,6 +77,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Indekser holder opslag i audit-loggen hurtige, efterhånden som den vokser.
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);

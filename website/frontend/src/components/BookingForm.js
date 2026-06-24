@@ -1,7 +1,19 @@
+/*
+ * BookingForm.js — Bookingformularen.
+ *
+ * HVAD FILEN GØR:
+ * Lader en logget-ind og verificeret kunde vælge dato og tidspunkt og bekræfte en booking.
+ * Henter optagede tider fra /api/availability og sender den færdige booking til
+ * /api/appointments. Viser også fejl, fx hvis tiden lige er blevet taget (409).
+ *
+ * Kaldes fra App.js, når en kunde har valgt en ydelse.
+ */
+
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from 'axios';   // HTTP-klient til at kalde backend
 import './BookingForm.css';
 
+// Formaterer et tal som dansk valuta, fx 250 -> "250,00 kr.".
 function formatDkk(value) {
   return new Intl.NumberFormat('da-DK', { style: 'currency', currency: 'DKK' }).format(Number(value));
 }
@@ -38,12 +50,14 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequi
     }
   }, [currentUser]);
 
+  // Hver gang kunden vælger en ny dato, hentes de allerede optagede tider for den dag.
   useEffect(() => {
     if (formData.appointment_date) {
       fetchAvailability(formData.appointment_date);
     }
   }, [formData.appointment_date]);
 
+  // Henter listen af optagede tidsslots for en dato fra backend.
   const fetchAvailability = async (date) => {
     try {
       const response = await axios.get(`${apiUrl}/api/availability/${date}`);
@@ -61,6 +75,8 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequi
     setError(null);
   };
 
+  // Sender bookingen til backend. Kræver samtykke afkrydset. Håndterer de typiske fejl:
+  // manglende verifikation (NOT_VERIFIED) og at tiden lige er blevet booket af en anden (409).
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!consentGiven) {
@@ -71,6 +87,7 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequi
     setError(null);
 
     try {
+      // withCredentials: true sender JWT-cookien med, så backend ved hvem der booker.
       const response = await axios.post(
         `${apiUrl}/api/appointments`,
         {
@@ -106,6 +123,8 @@ const BookingForm = ({ service, onBack, onComplete, apiUrl, currentUser, onRequi
     }
   };
 
+  // Beregner hvilke tider der kan vælges: fjerner optagede slots, og hvis datoen er i dag,
+  // fjernes også tidspunkter der allerede er passeret.
   const getAvailableSlots = () => {
     const isToday = formData.appointment_date === today;
     return timeSlots.filter(slot => {

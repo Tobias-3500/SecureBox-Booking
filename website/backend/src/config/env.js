@@ -1,13 +1,28 @@
-const { z } = require('zod');
-const crypto = require('crypto');
+/*
+ * env.js — Validering af miljøvariabler (konfiguration).
+ *
+ * HVAD FILEN GØR:
+ * Læser alle nødvendige indstillinger (databaseadgang, JWT-hemmelighed, API-nøgler m.m.)
+ * fra miljøet og validerer dem med Zod, FØR resten af systemet starter.
+ * Mangler eller er en variabel forkert, stopper serveren med en tydelig fejl ved opstart
+ * i stedet for at fejle uforudsigeligt senere.
+ *
+ * HVORFOR: Hemmeligheder (adgangskoder, nøgler) ligger aldrig i koden. De kommer fra
+ * miljøet/.env-filen, så koden trygt kan deles offentligt på GitHub.
+ */
+
+const { z } = require('zod');          // Skema-validering
+const crypto = require('crypto');      // Bruges til at tjekke at Googles private nøgle er gyldig
 const logger = require('./logger');
 
-require('dotenv').config();
+require('dotenv').config();            // Indlæser variabler fra .env-filen til process.env
 
-const portSchema = z.coerce.number().int().min(1).max(65535);
+// Genbrugelige byggeklodser til validering.
+const portSchema = z.coerce.number().int().min(1).max(65535);     // Et gyldigt portnummer
 const booleanStringSchema = z.enum(['true', 'false']).default('false');
 const emailSchema = z.string().email();
 
+// Skemaet beskriver præcis hvilke variabler systemet kræver, og hvilken form de skal have.
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']),
   DB_HOST: z.string().min(1, 'DB_HOST is required'),
@@ -29,6 +44,8 @@ const envSchema = z.object({
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional(),
   GOOGLE_CALENDAR_TIMEZONE: z.string().min(1).default('Europe/Copenhagen'),
 }).superRefine((value, ctx) => {
+  // Ekstra validering: KUN hvis Google Kalender er slået til, kræves Google-variablerne.
+  // Er integrationen slået fra, springes alle disse tjek over.
   if (value.GOOGLE_CALENDAR_ENABLED !== 'true') {
     return;
   }
@@ -74,14 +91,19 @@ const envSchema = z.object({
   }
 });
 
+// I test/CI-miljøer (fx GitHub Actions, der bare bygger images) springes den strenge
+// validering over, da de rigtige hemmeligheder ikke er til stede der.
 const shouldSkipValidation = process.env.NODE_ENV === 'test' || process.env.SKIP_ENV_VALIDATION === 'true';
 
+// Kører selve valideringen mod alle miljøvariabler.
 const parsedEnv = envSchema.safeParse(process.env);
 
 if (shouldSkipValidation) {
   logger.warn('[env] Skipping strict environment validation (test/CI mode).');
 }
 
+// Er konfigurationen ugyldig, stoppes serveren med det samme (process.exit(1)),
+// så systemet aldrig starter i en halvfærdig/usikker tilstand.
 if (!shouldSkipValidation && !parsedEnv.success) {
   logger.error('Invalid environment configuration', {
     errors: parsedEnv.error.format(),
@@ -94,6 +116,7 @@ if (!shouldSkipValidation && !parsedEnv.success) {
  */
 
 /** @type {Env} */
+// Resten af systemet importerer 'env' herfra — aldrig direkte fra process.env.
 const env = shouldSkipValidation ? process.env : parsedEnv.data;
 
 module.exports = { env };

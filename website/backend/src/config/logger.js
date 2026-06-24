@@ -1,12 +1,25 @@
+/*
+ * logger.js — Central logning for backend (Winston).
+ *
+ * HVAD FILEN GØR:
+ * Opretter én fælles logger, som hele backend bruger (logger.info, logger.error osv.).
+ * Logs skrives både til konsollen (læsbart) og til filer i JSON-format, så de er nemme
+ * at søge og filtrere i. Filerne roteres dagligt og gemmes i 14 dage.
+ *
+ * Disse logs er en del af OWASP A09 (Security Logging & Monitoring) og bruges også af
+ * admin-dashboardet til at vise fejl og backup-status.
+ */
+
 const fs = require('fs');
 const path = require('path');
 const winston = require('winston');
-const DailyRotateFile = require('winston-daily-rotate-file');
+const DailyRotateFile = require('winston-daily-rotate-file');  // Laver en ny logfil pr. dag
 
+// I produktion ligger logs i container-mappen /app/logs; lokalt i en ./logs-mappe.
 const isProduction = process.env.NODE_ENV === 'production';
 const logDirectory = isProduction ? '/app/logs' : path.join(process.cwd(), 'logs');
 
-fs.mkdirSync(logDirectory, { recursive: true });
+fs.mkdirSync(logDirectory, { recursive: true });  // Opret log-mappen hvis den ikke findes
 
 const logFormat = winston.format.combine(
   winston.format.timestamp(),
@@ -15,6 +28,7 @@ const logFormat = winston.format.combine(
   winston.format.json()
 );
 
+// "Transports" = hvor logs sendes hen. Her: konsol + to roterende filer (fejl og alt).
 const transports = [
   new winston.transports.Console({
     format: winston.format.combine(

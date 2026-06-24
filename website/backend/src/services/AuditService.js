@@ -1,10 +1,26 @@
+/*
+ * AuditService.js — Audit-logning til databasen.
+ *
+ * HVAD FILEN GØR:
+ * Skriver en "hvem gjorde hvad og hvornår"-historik til tabellen audit_logs. Hver vigtig
+ * handling (oprettelse, login, booking, statusændring, kalender-sync) gemmes som en række
+ * med bruger-id, handling, før/efter-værdier og klientens IP-adresse.
+ *
+ * HVORFOR: Det giver sporbarhed til fejlfinding og er en del af OWASP A09
+ * (Security Logging & Monitoring). server.js opretter én AuditService og kalder
+ * logAction() de relevante steder.
+ */
+
 const logger = require('../config/logger');
 
 class AuditService {
+  // Modtager den fælles databasepulje fra server.js, så loggen skrives til samme database.
   constructor(pool) {
     this.pool = pool;
   }
 
+  // Opretter audit_logs-tabellen og dens indekser, hvis de ikke findes (køres ved opstart).
+  // Indekserne holder opslag hurtige, efterhånden som tabellen vokser.
   async ensureTable() {
     await this.pool.query(`
       CREATE TABLE IF NOT EXISTS audit_logs (
@@ -30,6 +46,10 @@ class AuditService {
     `);
   }
 
+  // Skriver én audit-hændelse til databasen.
+  //   action     = hvad der skete, fx 'LOGIN_SUCCESS' eller 'APPOINTMENT_CREATED'
+  //   entityType = hvilken slags ting det handler om, fx 'customer' eller 'appointment'
+  //   oldValue/newValue = før/efter-tilstand (gemmes som JSONB), så ændringer kan rekonstrueres
   async logAction({
     userId = null,
     action,
@@ -43,6 +63,8 @@ class AuditService {
       throw new Error('Audit log requires action and entityType');
     }
 
+    // Parameteriseret INSERT ($1..$7) — sikkert mod SQL injection.
+    // En fejl her må aldrig vælte selve handlingen, så den fanges og logges blot.
     try {
       await this.pool.query(
         `INSERT INTO audit_logs
@@ -70,6 +92,8 @@ class AuditService {
   }
 }
 
+// Finder klientens rigtige IP. Da alle forespørgsler kommer via nginx, bruges
+// X-Forwarded-For-headeren (sat af nginx) frem for den interne socket-adresse.
 function getRequestIp(req) {
   return req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || null;
 }

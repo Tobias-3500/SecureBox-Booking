@@ -1,3 +1,12 @@
+/*
+ * Header.js — Topmenuen/navigationen, der vises øverst på alle sider.
+ *
+ * HVAD FILEN GØR:
+ * Viser logo og navigationslinks (Ydelser, Om os, Admin) samt enten en "Log ind"-knap
+ * eller brugerens navn + "Log ud", afhængigt af om man er logget ind. Selve handlingerne
+ * (login, logout, scroll til ydelser) sendes ind som funktioner fra App.js via props.
+ */
+
 import React from 'react';
 import './Header.css';
 

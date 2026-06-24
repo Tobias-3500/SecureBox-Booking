@@ -1,4 +1,13 @@
-# Build stage
+# ============================================================================
+# Dockerfile (frontend) — Bygger React-appen og serverer den med nginx.
+#
+# To-trins build (multi-stage):
+#   1) "build": kompilerer React til statiske filer med "npm run build"
+#   2) "production": kopierer kun de færdige filer ind i et lille nginx-image
+# Resultatet er et lille, hurtigt image uden Node.js eller kildekode.
+# ============================================================================
+
+# Trin 1: byg de statiske React-filer.
 FROM node:18-alpine AS build
 
 WORKDIR /app
@@ -9,11 +18,11 @@ RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit --pr
 COPY . .
 RUN npm run build
 
-# Production stage
+# Trin 2: produktionsimage — server de byggede filer med nginx.
 FROM nginx:alpine
 
-COPY --from=build /app/build /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/build /usr/share/nginx/html    # De færdige React-filer fra trin 1
+COPY nginx.conf /etc/nginx/conf.d/default.conf        # Konfiguration for denne interne nginx
 
 EXPOSE 80
 

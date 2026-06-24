@@ -1,3 +1,19 @@
+# ============================================================================
+# docker-compose.yml — Lokal/byg-opsætning af hele systemet.
+#
+# HVAD FILEN GØR:
+# Definerer de fire containere (services), systemet består af, og hvordan de hænger
+# sammen. "docker compose up" starter dem alle med ét netværk imellem.
+#
+#   nginx     -> offentlig indgang (reverse proxy). Eneste container med åbne porte udadtil.
+#   db        -> PostgreSQL-database (kun intern, 'expose')
+#   backend   -> Node.js/Express API (kun intern, 'expose')
+#   frontend  -> de færdige React-filer serveret af nginx (kun intern, 'expose')
+#
+# Vigtigt sikkerhedsvalg: kun nginx bruger 'ports' (åben mod internettet). De øvrige
+# bruger 'expose', så de kun kan nås internt i Docker-netværket.
+# (Produktion bruger docker-compose.prod.yml, som kører færdigbyggede images.)
+# ============================================================================
 services:
   # Nginx fungerer som offentlig reverse proxy foran frontend og backend.
   nginx:

@@ -1,5 +1,23 @@
+# ============================================================================
+# deploy.yml — Automatisk udrulning (CI/CD) med GitHub Actions.
+#
+# HVAD FILEN GØR:
+# Kører automatisk, hver gang der pushes til 'main'. Trinene er:
+#   1) Byg Docker-images for backend og frontend
+#   2) Push dem til GitHub Container Registry (ghcr.io)
+#   3) Lav en .env-fil ud fra en GitHub Secret
+#   4) Kopiér nødvendige filer til produktions-VM'en (via SCP)
+#   5) SSH til VM'en, validér at .env er komplet, og start systemet med docker compose
+#
+# Hvis valideringen eller opstart fejler, stopper deployment og loggen viser fejlen,
+# så produktionen forbliver på den tidligere version.
+#
+# Alle hemmeligheder (VM-adgang, .env-indhold) ligger som GitHub Secrets — aldrig i koden.
+# ============================================================================
+
 name: Deploy to VM
 
+# Udløses ved push til main-branchen.
 on:
   push:
     branches:
