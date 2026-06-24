@@ -21,8 +21,10 @@ RUN npm run build
 # Trin 2: produktionsimage — server de byggede filer med nginx.
 FROM nginx:alpine
 
-COPY --from=build /app/build /usr/share/nginx/html    # De færdige React-filer fra trin 1
-COPY nginx.conf /etc/nginx/conf.d/default.conf        # Konfiguration for denne interne nginx
+# De færdige React-filer fra trin 1
+COPY --from=build /app/build /usr/share/nginx/html
+# Konfiguration for denne interne nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
